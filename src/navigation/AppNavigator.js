@@ -10,8 +10,31 @@ import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import MainMenuScreen from '../screens/MainMenuScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import RobotFunctionsScreen from '../screens/RobotFunctionsScreen';
+import MedicalHistoryScreen from '../screens/MedicalHistoryScreen';
+import IAMedicaScreen from '../screens/IAMedicaScreen';
+import PatientsScreen from '../screens/PatientsScreen';
 
 const Stack = createNativeStackNavigator();
+
+/**
+ * Opciones globales del header - estilo médico azul consistente
+ */
+const headerOptions = {
+  headerStyle: { backgroundColor: colors.primary },
+  headerTintColor: colors.white,
+  headerTitleStyle: { fontWeight: '600', fontSize: 18 },
+  headerBackTitleVisible: false,
+};
+
+/**
+ * Opciones para pantallas secundarias: botón volver visible
+ * Garantiza que siempre se pueda regresar al menú principal
+ */
+const secondaryScreenOptions = {
+  ...headerOptions,
+  headerBackVisible: true,
+};
 
 export default function AppNavigator() {
   const [initialRoute, setInitialRoute] = useState(null);
@@ -20,16 +43,21 @@ export default function AppNavigator() {
     checkAuth();
   }, []);
 
+  /**
+   * Determina la pantalla inicial según estado de autenticación.
+   * RoleSelection SIEMPRE es la primera pantalla cuando el usuario no está logueado.
+   * Solo MainMenu cuando hay sesión activa.
+   */
   const checkAuth = async () => {
     try {
-      const role = await AsyncStorage.getItem(STORAGE_KEYS.ROLE);
       const user = await AsyncStorage.getItem(STORAGE_KEYS.USER);
 
-      if (!role) {
+      if (!user) {
+        // Sin sesión: RoleSelection es la primera pantalla
+        // El usuario elegirá rol y navegará a Login (con flecha ← para volver)
         setInitialRoute('RoleSelection');
-      } else if (!user) {
-        setInitialRoute('Login');
       } else {
+        // Con sesión activa: ir directo al menú principal
         setInitialRoute('MainMenu');
       }
     } catch (error) {
@@ -45,12 +73,9 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator
         initialRouteName={initialRoute}
-        screenOptions={{
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: '600' },
-        }}
+        screenOptions={headerOptions}
       >
+        {/* Flujo de autenticación */}
         <Stack.Screen
           name="RoleSelection"
           component={RoleSelectionScreen}
@@ -59,22 +84,71 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Login"
           component={LoginScreen}
-          options={{ title: 'MEDICAL corp' }}
+          options={{
+            ...secondaryScreenOptions,
+            title: 'MEDICAL corp',
+          }}
         />
         <Stack.Screen
           name="Register"
           component={RegisterScreen}
-          options={{ title: 'Registro' }}
+          options={{
+            ...secondaryScreenOptions,
+            title: 'Registro',
+          }}
         />
+
+        {/* Menú principal - punto central, sin botón volver (es la raíz del flujo autenticado) */}
         <Stack.Screen
           name="MainMenu"
           component={MainMenuScreen}
-          options={{ title: 'MEDICAL corp', headerLeft: () => null }}
+          options={{
+            ...headerOptions,
+            title: 'MEDICAL corp',
+            headerLeft: () => null,
+          }}
         />
+
+        {/* Pantallas secundarias - todas con botón volver hacia el menú */}
         <Stack.Screen
           name="Profile"
           component={ProfileScreen}
-          options={{ title: 'Perfil' }}
+          options={{
+            ...secondaryScreenOptions,
+            title: 'Perfil',
+          }}
+        />
+        <Stack.Screen
+          name="RobotFunctions"
+          component={RobotFunctionsScreen}
+          options={{
+            ...secondaryScreenOptions,
+            title: 'Funciones del robot',
+          }}
+        />
+        <Stack.Screen
+          name="MedicalHistory"
+          component={MedicalHistoryScreen}
+          options={{
+            ...secondaryScreenOptions,
+            title: 'Historial médico',
+          }}
+        />
+        <Stack.Screen
+          name="MedicalAI"
+          component={IAMedicaScreen}
+          options={{
+            ...secondaryScreenOptions,
+            title: 'IA médica',
+          }}
+        />
+        <Stack.Screen
+          name="Patients"
+          component={PatientsScreen}
+          options={{
+            ...secondaryScreenOptions,
+            title: 'Pacientes',
+          }}
         />
       </Stack.Navigator>
     </NavigationContainer>

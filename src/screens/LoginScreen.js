@@ -11,9 +11,11 @@ import {
   SafeAreaView,
   Alert,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/storage';
 import colors from '../constants/colors';
+import { buttons } from '../constants/theme';
 
 const isValidEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -51,7 +53,13 @@ export default function LoginScreen({ navigation }) {
 
       if (userData && userData.email === email.trim() && userData.password === password) {
         await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-        navigation.replace('MainMenu');
+        // Reset a solo MainMenu: limpia el stack de auth (RoleSelection, Login)
+        navigation.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: 'MainMenu' }],
+          })
+        );
       } else {
         Alert.alert(
           'Error',
@@ -73,6 +81,7 @@ export default function LoginScreen({ navigation }) {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <Text style={styles.title}>Iniciar sesión</Text>
           <Text style={styles.subtitle}>MEDICAL corp</Text>
@@ -81,7 +90,7 @@ export default function LoginScreen({ navigation }) {
             <TextInput
               style={[styles.input, errors.email && styles.inputError]}
               placeholder="Correo electrónico"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.textMuted}
               value={email}
               onChangeText={(text) => {
                 setEmail(text);
@@ -96,7 +105,7 @@ export default function LoginScreen({ navigation }) {
             <TextInput
               style={[styles.input, errors.password && styles.inputError]}
               placeholder="Contraseña"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.textMuted}
               value={password}
               onChangeText={(text) => {
                 setPassword(text);
@@ -106,17 +115,20 @@ export default function LoginScreen({ navigation }) {
             />
             {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
 
-            <TouchableOpacity style={styles.primaryButton} onPress={handleLogin}>
-              <Text style={styles.primaryButtonText}>Iniciar sesión</Text>
+            <TouchableOpacity
+              style={[buttons.primary, styles.primaryButton]}
+              onPress={handleLogin}
+              activeOpacity={0.85}
+            >
+              <Text style={buttons.primaryText}>Iniciar sesión</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.secondaryButton}
+              style={[buttons.secondary, styles.secondaryButton]}
               onPress={() => navigation.navigate('Register')}
+              activeOpacity={0.85}
             >
-              <Text style={styles.secondaryButtonText}>
-                ¿No tienes cuenta? Regístrate
-              </Text>
+              <Text style={buttons.secondaryText}>¿No tienes cuenta? Regístrate</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -139,15 +151,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: colors.text,
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.textLight,
     textAlign: 'center',
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 16,
-    color: colors.primary,
+    fontSize: 15,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 32,
   },
@@ -155,12 +167,13 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   input: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.card,
     padding: 16,
     borderRadius: 8,
     fontSize: 16,
     borderWidth: 1,
     borderColor: colors.border,
+    color: colors.text,
   },
   inputError: {
     borderColor: colors.error,
@@ -171,23 +184,9 @@ const styles = StyleSheet.create({
     marginTop: -8,
   },
   primaryButton: {
-    backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
     marginTop: 8,
   },
-  primaryButtonText: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: '600',
-  },
   secondaryButton: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: colors.primary,
-    fontSize: 16,
+    marginTop: 8,
   },
 });

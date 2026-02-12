@@ -4,17 +4,17 @@ import { Ionicons } from '@expo/vector-icons';
 import colors from '../constants/colors';
 
 /**
- * Pantalla de Perfil - Placeholder
- * Se implementará en futuras fases
+ * Historial médico - Placeholder
+ * Se implementará en futuras fases (rol Paciente)
  */
-export default function ProfileScreen() {
+export default function MedicalHistoryScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <View style={styles.iconWrapper}>
-          <Ionicons name="person" size={48} color={colors.primary} />
+          <Ionicons name="document-text" size={48} color={colors.primary} />
         </View>
-        <Text style={styles.title}>Perfil</Text>
+        <Text style={styles.title}>Historial médico</Text>
         <Text style={styles.subtitle}>Próximamente</Text>
       </View>
     </SafeAreaView>
@@ -40,7 +40,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
-    // Sombra suave para mantener coherencia con tarjetas principales
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowOffset: { width: 0, height: 3 },

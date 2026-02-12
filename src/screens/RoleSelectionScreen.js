@@ -5,20 +5,25 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
+  ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
 import colors from '../constants/colors';
 
 /**
- * Pantalla de selección de rol - Primera pantalla al abrir la app
- * Permite elegir entre Paciente y Doctor antes del login
+ * Pantalla de selección de rol - SIEMPRE la primera del flujo de autenticación.
+ * El usuario elige Paciente o Médico, se guarda en AsyncStorage y navega a Login.
+ * Usa navigate (no replace) para que Login mantenga RoleSelection en el stack
+ * y muestre la flecha ← para volver a cambiar de rol.
  */
 export default function RoleSelectionScreen({ navigation }) {
   const handleRoleSelect = async (role) => {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.ROLE, role);
-      navigation.replace('Login');
+      // navigate (no replace): mantiene RoleSelection en el stack para que Login muestre flecha ←
+      navigation.navigate('Login');
     } catch (error) {
       console.error('Error al guardar rol:', error);
     }
@@ -26,36 +31,48 @@ export default function RoleSelectionScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        {/* Logo / Nombre de la empresa */}
-        <Text style={styles.logo}>MEDICAL corp</Text>
-        <Text style={styles.subtitle}>
-          Asistencia de salud integral con Inteligencia Artificial
-        </Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.brand}>MEDICAL corp</Text>
+          <Text style={styles.title}>¿Qué modo deseas usar?</Text>
+          <Text style={styles.subtitle}>
+            Selecciona el perfil con el que vas a acceder a la aplicación.
+          </Text>
+        </View>
 
-        {/* Botones de selección de rol */}
-        <View style={styles.buttonsContainer}>
+        <View style={styles.cardsContainer}>
           <TouchableOpacity
-            style={styles.roleButton}
+            style={styles.card}
             onPress={() => handleRoleSelect(ROLES.PATIENT)}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <Text style={styles.roleIcon}>👤</Text>
-            <Text style={styles.roleTitle}>Paciente</Text>
-            <Text style={styles.roleDescription}>Acceso como paciente</Text>
+            <View style={styles.cardIconWrapper}>
+              <Ionicons name="person" size={28} color={colors.primary} />
+            </View>
+            <Text style={styles.cardTitle}>PACIENTE</Text>
+            <Text style={styles.cardDescription}>
+              Accede a tu información médica y asistencia
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.roleButton}
+            style={styles.card}
             onPress={() => handleRoleSelect(ROLES.DOCTOR)}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <Text style={styles.roleIcon}>👨‍⚕️</Text>
-            <Text style={styles.roleTitle}>Doctor</Text>
-            <Text style={styles.roleDescription}>Acceso como profesional médico</Text>
+            <View style={styles.cardIconWrapper}>
+              <Ionicons name="medkit" size={28} color={colors.primary} />
+            </View>
+            <Text style={styles.cardTitle}>MÉDICO</Text>
+            <Text style={styles.cardDescription}>
+              Gestiona pacientes y funciones del robot
+            </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -65,48 +82,66 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  content: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     padding: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingTop: 40,
   },
-  logo: {
-    fontSize: 32,
-    fontWeight: 'bold',
+  header: {
+    marginBottom: 40,
+  },
+  brand: {
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.primary,
-    marginBottom: 8,
+    letterSpacing: 1.5,
+    marginBottom: 24,
   },
-  subtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 48,
-  },
-  buttonsContainer: {
-    width: '100%',
-    gap: 16,
-  },
-  roleButton: {
-    backgroundColor: colors.white,
-    padding: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.border,
-  },
-  roleIcon: {
-    fontSize: 48,
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: colors.textLight,
+    lineHeight: 34,
     marginBottom: 12,
   },
-  roleTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  roleDescription: {
-    fontSize: 14,
+  subtitle: {
+    fontSize: 15,
     color: colors.textSecondary,
-    marginTop: 4,
+    lineHeight: 22,
+  },
+  cardsContainer: {
+    gap: 16,
+  },
+  card: {
+    backgroundColor: colors.card,
+    padding: 24,
+    borderRadius: 12,
+    // Sutil elevación para aspecto de tarjeta moderna
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  cardIconWrapper: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: colors.cardIconBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  cardDescription: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    lineHeight: 22,
   },
 });

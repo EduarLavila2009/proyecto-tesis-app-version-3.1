@@ -8,13 +8,21 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '../constants/storage';
+import { STORAGE_KEYS, ROLES } from '../constants/storage';
+import { MENU_ITEMS } from '../constants/menuConfig';
 import colors from '../constants/colors';
 
+/**
+ * Menú principal - Dashboard dinámico según rol
+ * Paciente: Perfil, Historial médico, IA médica
+ * Médico: Perfil, Pacientes, Funciones del robot
+ */
 export default function MainMenuScreen({ navigation }) {
   const [user, setUser] = useState(null);
-  const [role, setRole] = useState('');
+  const [roleKey, setRoleKey] = useState('');
 
   useEffect(() => {
     loadUserData();
@@ -24,16 +32,14 @@ export default function MainMenuScreen({ navigation }) {
     try {
       const userJson = await AsyncStorage.getItem(STORAGE_KEYS.USER);
       const roleData = await AsyncStorage.getItem(STORAGE_KEYS.ROLE);
-      if (userJson) {
-        setUser(JSON.parse(userJson));
-      }
-      if (roleData) {
-        setRole(roleData === 'doctor' ? 'Doctor' : 'Paciente');
-      }
+      if (userJson) setUser(JSON.parse(userJson));
+      if (roleData) setRoleKey(roleData);
     } catch (error) {
       console.error('Error al cargar usuario:', error);
     }
   };
+
+  const roleLabel = roleKey === ROLES.DOCTOR ? 'Médico' : 'Paciente';
 
   const handleLogout = () => {
     Alert.alert(
@@ -47,7 +53,17 @@ export default function MainMenuScreen({ navigation }) {
           onPress: async () => {
             try {
               await AsyncStorage.removeItem(STORAGE_KEYS.USER);
-              navigation.replace('Login');
+              // Reset a [RoleSelection, Login] para que el usuario vea Login
+              // pero pueda usar flecha ← para volver a RoleSelection y cambiar rol
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 1,
+                  routes: [
+                    { name: 'RoleSelection' },
+                    { name: 'Login' },
+                  ],
+                })
+              );
             } catch (error) {
               console.error('Error al cerrar sesión:', error);
             }
@@ -57,33 +73,50 @@ export default function MainMenuScreen({ navigation }) {
     );
   };
 
+  const menuItems = MENU_ITEMS[roleKey] || MENU_ITEMS[ROLES.PATIENT];
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.welcome}>Bienvenido</Text>
-        {user && <Text style={styles.userName}>{user.name}</Text>}
-        {role && (
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>{role}</Text>
-          </View>
-        )}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.welcome}>Bienvenido</Text>
+          {user && <Text style={styles.userName}>{user.name}</Text>}
+          {roleKey && (
+            <View style={styles.roleBadge}>
+              <Text style={styles.roleText}>Modo {roleLabel}</Text>
+            </View>
+          )}
+        </View>
 
-        <View style={styles.menu}>
+        <View style={styles.dashboard}>
+          {menuItems.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.card}
+              onPress={() => navigation.navigate(item.screen)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.cardIcon}>
+                <Ionicons name={item.icon} size={24} color={colors.primary} />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>{item.title}</Text>
+                {item.isPlaceholder && (
+                  <Text style={styles.cardBadge}>Próximamente</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          ))}
+
           <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => navigation.navigate('Profile')}
+            style={styles.logoutButton}
+            onPress={handleLogout}
+            activeOpacity={0.85}
           >
-            <Text style={styles.menuIcon}>👤</Text>
-            <Text style={styles.menuTitle}>Perfil</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.menuItem} disabled>
-            <Text style={styles.menuIcon}>🤖</Text>
-            <Text style={styles.menuTitle}>Funciones del robot</Text>
-            <Text style={styles.comingSoon}>Próximamente</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={20} color={colors.error} />
             <Text style={styles.logoutText}>Cerrar sesión</Text>
           </TouchableOpacity>
         </View>
@@ -100,64 +133,82 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 24,
   },
+  header: {
+    marginBottom: 32,
+  },
   welcome: {
-    fontSize: 18,
+    fontSize: 15,
     color: colors.textSecondary,
     marginBottom: 4,
   },
   userName: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: colors.text,
+    fontSize: 26,
+    fontWeight: '700',
+    color: colors.textLight,
     marginBottom: 12,
   },
   roleBadge: {
     alignSelf: 'flex-start',
     backgroundColor: colors.primary,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: 32,
+    borderRadius: 8,
   },
   roleText: {
     color: colors.white,
     fontSize: 14,
     fontWeight: '600',
   },
-  menu: {
+  dashboard: {
     gap: 12,
   },
-  menuItem: {
-    backgroundColor: colors.white,
+  card: {
+    backgroundColor: colors.card,
     padding: 20,
     borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
+    // Ligera sombra para dar profundidad al dashboard
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 5,
+    elevation: 3,
   },
-  menuIcon: {
-    fontSize: 28,
+  cardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: colors.cardIconBg,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 16,
   },
-  menuTitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: colors.text,
+  cardContent: {
     flex: 1,
   },
-  comingSoon: {
-    fontSize: 14,
-    color: colors.textSecondary,
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  cardBadge: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 4,
     fontStyle: 'italic',
   },
   logoutButton: {
     marginTop: 24,
-    padding: 16,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.error,
-    borderRadius: 8,
+    gap: 8,
+    // Sin sombra: se mantiene como acción secundaria plana
   },
   logoutText: {
     color: colors.error,
