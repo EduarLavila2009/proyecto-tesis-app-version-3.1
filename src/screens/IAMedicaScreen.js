@@ -9,8 +9,12 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../constants/colors';
+import spacing from '../constants/spacing';
+import { fontSizes } from '../constants/typography';
+import { ICON_SIZES } from '../constants/icons';
 
 /**
  * IA médica simulada - Chat de demostración
@@ -196,91 +200,99 @@ export default function IAMedicaScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      // En iOS se compensa la altura del header de navegación; en Android suele ser 0
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <View style={styles.innerContainer}>
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.chatArea}
-          contentContainerStyle={styles.chatContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="always"
-        >
-          {messages.map((msg) => (
-            <View
-              key={msg.id}
-              style={[styles.messageRow, msg.isUser ? styles.userRow : styles.aiRow]}
-            >
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <View style={styles.innerContainer}>
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.chatArea}
+            contentContainerStyle={styles.chatContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {messages.map((msg) => (
               <View
-                style={[
-                  styles.bubble,
-                  msg.isUser ? styles.userBubble : styles.aiBubble,
-                ]}
+                key={msg.id}
+                style={[styles.messageRow, msg.isUser ? styles.userRow : styles.aiRow]}
               >
-                <Text
+                <View
                   style={[
-                    styles.bubbleText,
-                    msg.isUser ? styles.userText : styles.aiText,
+                    styles.bubble,
+                    msg.isUser ? styles.userBubble : styles.aiBubble,
                   ]}
                 >
-                  {msg.text}
-                </Text>
+                  <Text
+                    style={[
+                      styles.bubbleText,
+                      msg.isUser ? styles.userText : styles.aiText,
+                    ]}
+                  >
+                    {msg.text}
+                  </Text>
+                </View>
               </View>
-            </View>
-          ))}
+            ))}
 
-          {/* Indicador de que la IA está "escribiendo" para dar sensación de chat real */}
-          {isTyping && (
-            <View style={[styles.messageRow, styles.aiRow]}>
-              <View style={[styles.bubble, styles.aiBubble, styles.typingBubble]}>
-                <Text style={[styles.bubbleText, styles.aiText]}>
-                  El asistente está escribiendo...
-                </Text>
+            {isTyping && (
+              <View style={[styles.messageRow, styles.aiRow]}>
+                <View style={[styles.typingBubble]}>
+                  <View style={styles.typingDots}>
+                    <View style={styles.typingDot} />
+                    <View style={styles.typingDot} />
+                    <View style={styles.typingDot} />
+                  </View>
+                </View>
               </View>
-            </View>
-          )}
-        </ScrollView>
+            )}
+          </ScrollView>
 
-        {/* Input fijo en la parte inferior, separado de la barra del sistema */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Escribe tu mensaje..."
-            placeholderTextColor={colors.textMuted}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={500}
-            onSubmitEditing={handleSend}
-            returnKeyType="send"
-            blurOnSubmit={false}
-          />
-          <TouchableOpacity
-            style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
-            onPress={handleSend}
-            disabled={!inputText.trim()}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="send"
-              size={22}
-              color={inputText.trim() ? colors.white : colors.textMuted}
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Escribe tu mensaje..."
+              placeholderTextColor={colors.textMuted}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              maxLength={500}
+              onSubmitEditing={handleSend}
+              returnKeyType="send"
+              blurOnSubmit={false}
             />
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
+              onPress={handleSend}
+              disabled={!inputText.trim()}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="send-outline"
+                size={ICON_SIZES.action}
+                color={inputText.trim() ? colors.white : colors.textMuted}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
+
+const BUBBLE_RADIUS = 18;
+const INPUT_MIN_HEIGHT = 44;
+const SEND_BUTTON_SIZE = 44;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  keyboardView: {
+    flex: 1,
   },
   innerContainer: {
     flex: 1,
@@ -289,11 +301,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   chatContent: {
-    padding: 16,
-    paddingBottom: 24,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   messageRow: {
-    marginBottom: 12,
+    marginBottom: spacing.lg,
   },
   userRow: {
     alignItems: 'flex-end',
@@ -302,25 +314,29 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   bubble: {
-    maxWidth: '85%',
-    padding: 14,
-    borderRadius: 16,
+    maxWidth: '88%',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: BUBBLE_RADIUS,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 4,
+    elevation: 2,
   },
   userBubble: {
-    // Azul médico para mensajes del usuario (se asume que colors.primary es #1E88E5)
     backgroundColor: colors.primary,
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: 6,
   },
   aiBubble: {
     backgroundColor: colors.card,
-    borderBottomLeftRadius: 4,
-  },
-  typingBubble: {
-    opacity: 0.8,
+    borderBottomLeftRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
   },
   bubbleText: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: fontSizes.base - 1,
+    lineHeight: 23,
+    letterSpacing: 0.2,
   },
   userText: {
     color: colors.white,
@@ -328,40 +344,68 @@ const styles = StyleSheet.create({
   aiText: {
     color: colors.text,
   },
+  typingBubble: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: BUBBLE_RADIUS,
+    borderBottomLeftRadius: 6,
+    backgroundColor: colors.cardMuted,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  typingDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.textMuted,
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    // Más padding inferior en Android para evitar choque con barra de navegación
-    paddingBottom: Platform.OS === 'ios' ? 20 : 18,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 25,
     backgroundColor: colors.backgroundLight,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    gap: 10,
+    gap: spacing.sm,
   },
   input: {
     flex: 1,
     backgroundColor: colors.card,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    paddingRight: 16,
-    fontSize: 15,
+    borderRadius: INPUT_MIN_HEIGHT / 2,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    paddingRight: spacing.lg,
+    fontSize: fontSizes.base - 1,
     color: colors.text,
-    // Altura cómoda para escribir, permitiendo mensajes más largos
-    minHeight: 40,
+    minHeight: INPUT_MIN_HEIGHT,
     maxHeight: 120,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: SEND_BUTTON_SIZE,
+    height: SEND_BUTTON_SIZE,
+    borderRadius: SEND_BUTTON_SIZE / 2,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    elevation: 2,
   },
   sendButtonDisabled: {
-    backgroundColor: colors.border,
+    backgroundColor: colors.buttonSecondary,
+    shadowOpacity: 0,
+    elevation: 0,
   },
 });

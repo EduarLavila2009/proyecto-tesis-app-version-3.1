@@ -12,13 +12,29 @@ import {
 } from 'react-native';
 import { CommonActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '../constants/storage';
+import { STORAGE_KEYS, ROLES, DEFAULT_MEDICAL_HISTORY } from '../constants/storage';
 import colors from '../constants/colors';
+import spacing from '../constants/spacing';
+import { fontSizes } from '../constants/typography';
 import { buttons } from '../constants/theme';
 
 const isValidEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
+};
+
+/**
+ * Genera el siguiente ID único según rol: PAC-0001, PAC-0002, MED-0001, etc.
+ * @param {Array} users - Array actual de usuarios
+ * @param {string} role - ROLES.PATIENT o ROLES.DOCTOR
+ * @returns {string}
+ */
+const generateUserId = (users, role) => {
+  const prefix = role === ROLES.DOCTOR ? 'MED' : 'PAC';
+  const samePrefix = (users || []).filter((u) => u.id && u.id.startsWith(prefix));
+  const numbers = samePrefix.map((u) => parseInt(u.id.replace(prefix, ''), 10)).filter((n) => !Number.isNaN(n));
+  const nextNum = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+  return `${prefix}-${String(nextNum).padStart(4, '0')}`;
 };
 
 export default function RegisterScreen({ navigation }) {
@@ -45,14 +61,34 @@ export default function RegisterScreen({ navigation }) {
 
     try {
       const role = await AsyncStorage.getItem(STORAGE_KEYS.ROLE);
+      const roleKey = (role || ROLES.PATIENT).toLowerCase();
+
+      // Obtener array de usuarios (o vacío si es el primero)
+      let users = [];
+      const usersJson = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
+      if (usersJson) {
+        try {
+          users = JSON.parse(usersJson);
+        } catch (_) {
+          users = [];
+        }
+      }
+
+      const id = generateUserId(users, roleKey);
+
       const userData = {
+        id,
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
-        role: role || 'paciente',
+        role: roleKey,
+        medicalHistory: { ...DEFAULT_MEDICAL_HISTORY },
       };
+
+      users.push(userData);
+      await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
       await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-      // Reset a solo MainMenu: limpia el stack de auth
+
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
@@ -75,79 +111,91 @@ export default function RegisterScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>Registro</Text>
-          <Text style={styles.subtitle}>Crear cuenta en MEDICAL corp</Text>
+          <View style={styles.header}>
+            <Text style={styles.title}>Registro</Text>
+            <Text style={styles.subtitle}>Crear cuenta en MEDICAL corp</Text>
+          </View>
 
           <View style={styles.form}>
-            <TextInput
-              style={[styles.input, errors.name && styles.inputError]}
-              placeholder="Nombre completo"
-              placeholderTextColor={colors.textMuted}
-              value={name}
-              onChangeText={(text) => {
-                setName(text);
-                if (errors.name) setErrors({ ...errors, name: null });
-              }}
-            />
-            {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+            <View style={styles.fieldGroup}>
+              <TextInput
+                style={[styles.input, errors.name && styles.inputError]}
+                placeholder="Nombre completo"
+                placeholderTextColor={colors.textMuted}
+                value={name}
+                onChangeText={(text) => {
+                  setName(text);
+                  if (errors.name) setErrors({ ...errors, name: null });
+                }}
+              />
+              {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+            </View>
 
-            <TextInput
-              style={[styles.input, errors.email && styles.inputError]}
-              placeholder="Correo electrónico"
-              placeholderTextColor={colors.textMuted}
-              value={email}
-              onChangeText={(text) => {
-                setEmail(text);
-                if (errors.email) setErrors({ ...errors, email: null });
-              }}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+            <View style={styles.fieldGroup}>
+              <TextInput
+                style={[styles.input, errors.email && styles.inputError, { color: '#FFFFFF' }]}
+                placeholder="Correo electrónico"
+                placeholderTextColor={colors.textMuted}
+                value={email}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  if (errors.email) setErrors({ ...errors, email: null });
+                }}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                selectionColor={colors.primary}
+                cursorColor={colors.primary}
+              />
+              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+            </View>
 
-            <TextInput
-              style={[styles.input, errors.password && styles.inputError]}
-              placeholder="Contraseña"
-              placeholderTextColor={colors.textMuted}
-              value={password}
-              onChangeText={(text) => {
-                setPassword(text);
-                if (errors.password) setErrors({ ...errors, password: null });
-              }}
-              secureTextEntry
-            />
-            {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+            <View style={styles.fieldGroup}>
+              <TextInput
+                style={[styles.input, errors.password && styles.inputError]}
+                placeholder="Contraseña"
+                placeholderTextColor={colors.textMuted}
+                value={password}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  if (errors.password) setErrors({ ...errors, password: null });
+                }}
+                secureTextEntry
+              />
+              {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+            </View>
 
-            <TextInput
-              style={[styles.input, errors.confirmPassword && styles.inputError]}
-              placeholder="Confirmar contraseña"
-              placeholderTextColor={colors.textMuted}
-              value={confirmPassword}
-              onChangeText={(text) => {
-                setConfirmPassword(text);
-                if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: null });
-              }}
-              secureTextEntry
-            />
-            {errors.confirmPassword && (
-              <Text style={styles.errorText}>{errors.confirmPassword}</Text>
-            )}
+            <View style={styles.fieldGroup}>
+              <TextInput
+                style={[styles.input, errors.confirmPassword && styles.inputError]}
+                placeholder="Confirmar contraseña"
+                placeholderTextColor={colors.textMuted}
+                value={confirmPassword}
+                onChangeText={(text) => {
+                  setConfirmPassword(text);
+                  if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: null });
+                }}
+                secureTextEntry
+              />
+              {errors.confirmPassword && (
+                <Text style={styles.errorText}>{errors.confirmPassword}</Text>
+              )}
+            </View>
 
             <TouchableOpacity
               style={[buttons.primary, styles.primaryButton]}
               onPress={handleRegister}
-              activeOpacity={0.85}
+              activeOpacity={0.82}
             >
               <Text style={buttons.primaryText}>Registrarse</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[buttons.secondary, styles.secondaryButton]}
+              style={styles.secondaryButton}
               onPress={() => navigation.goBack()}
-              activeOpacity={0.85}
+              activeOpacity={0.82}
             >
-              <Text style={buttons.secondaryText}>¿Ya tienes cuenta? Inicia sesión</Text>
+              <Text style={styles.secondaryButtonText}>¿Ya tienes cuenta? Inicia sesión</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -166,46 +214,77 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 24,
+    padding: spacing.xxl,
+    paddingBottom: spacing.screen,
     justifyContent: 'center',
   },
+  header: {
+    marginBottom: spacing.xxxl,
+  },
   title: {
-    fontSize: 24,
+    fontSize: fontSizes.display,
     fontWeight: '700',
     color: colors.textLight,
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: spacing.sm,
+    letterSpacing: 0.3,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: fontSizes.base - 1,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 32,
+    letterSpacing: 0.5,
   },
   form: {
-    gap: 16,
+    gap: 0,
+  },
+  fieldGroup: {
+    marginBottom: spacing.lg,
   },
   input: {
     backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 8,
-    fontSize: 16,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    borderRadius: spacing.radiusMd,
+    fontSize: fontSizes.base,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderLight,
     color: colors.text,
+    minHeight: 52,
   },
   inputError: {
     borderColor: colors.error,
+    borderWidth: 1.5,
   },
   errorText: {
     color: colors.error,
-    fontSize: 12,
-    marginTop: -8,
+    fontSize: fontSizes.xs,
+    marginTop: spacing.xs,
+    marginLeft: spacing.xs,
   },
   primaryButton: {
-    marginTop: 8,
+    marginTop: spacing.xxl,
+    borderRadius: spacing.radiusMd,
+    shadowColor: colors.black,
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 3,
   },
   secondaryButton: {
-    marginTop: 8,
+    marginTop: spacing.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: spacing.radiusMd,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  secondaryButtonText: {
+    color: colors.textLight,
+    fontSize: fontSizes.base,
+    fontWeight: '500',
   },
 });

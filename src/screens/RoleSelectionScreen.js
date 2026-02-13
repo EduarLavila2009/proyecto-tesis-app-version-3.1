@@ -11,6 +11,9 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
 import colors from '../constants/colors';
+import spacing from '../constants/spacing';
+import { fontSizes } from '../constants/typography';
+import { ICON_SIZES } from '../constants/icons';
 
 /**
  * Pantalla de selección de rol - SIEMPRE la primera del flujo de autenticación.
@@ -50,7 +53,7 @@ export default function RoleSelectionScreen({ navigation }) {
             activeOpacity={0.85}
           >
             <View style={styles.cardIconWrapper}>
-              <Ionicons name="person" size={28} color={colors.primary} />
+              <Ionicons name="person-circle-outline" size={ICON_SIZES.roleCard} color={colors.primary} />
             </View>
             <Text style={styles.cardTitle}>PACIENTE</Text>
             <Text style={styles.cardDescription}>
@@ -64,7 +67,7 @@ export default function RoleSelectionScreen({ navigation }) {
             activeOpacity={0.85}
           >
             <View style={styles.cardIconWrapper}>
-              <Ionicons name="medkit" size={28} color={colors.primary} />
+              <Ionicons name="medkit-outline" size={ICON_SIZES.roleCard} color={colors.primary} />
             </View>
             <Text style={styles.cardTitle}>MÉDICO</Text>
             <Text style={styles.cardDescription}>
@@ -84,40 +87,39 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 24,
-    paddingTop: 40,
+    padding: spacing.xxl,
+    paddingTop: spacing.section,
   },
   header: {
-    marginBottom: 40,
+    marginBottom: spacing.section,
   },
   brand: {
-    fontSize: 13,
+    fontSize: fontSizes.sm,
     fontWeight: '600',
     color: colors.primary,
     letterSpacing: 1.5,
-    marginBottom: 24,
+    marginBottom: spacing.xxl,
   },
   title: {
-    fontSize: 26,
+    fontSize: fontSizes.display,
     fontWeight: '700',
     color: colors.textLight,
-    lineHeight: 34,
-    marginBottom: 12,
+    lineHeight: 36,
+    marginBottom: spacing.md,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: fontSizes.base - 1,
     color: colors.textSecondary,
     lineHeight: 22,
   },
   cardsContainer: {
-    gap: 16,
+    gap: spacing.lg,
   },
   card: {
     backgroundColor: colors.card,
-    padding: 24,
-    borderRadius: 12,
-    // Sutil elevación para aspecto de tarjeta moderna
-    shadowColor: '#000',
+    padding: spacing.xxl,
+    borderRadius: spacing.radiusLg,
+    shadowColor: colors.black,
     shadowOpacity: 0.12,
     shadowOffset: { width: 0, height: 3 },
     shadowRadius: 6,
@@ -126,21 +128,21 @@ const styles = StyleSheet.create({
   cardIconWrapper: {
     width: 52,
     height: 52,
-    borderRadius: 12,
+    borderRadius: spacing.radiusMd,
     backgroundColor: colors.cardIconBg,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   cardTitle: {
-    fontSize: 17,
+    fontSize: fontSizes.lg,
     fontWeight: '700',
     color: colors.text,
     letterSpacing: 0.5,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   cardDescription: {
-    fontSize: 15,
+    fontSize: fontSizes.base - 1,
     color: colors.textSecondary,
     lineHeight: 22,
   },

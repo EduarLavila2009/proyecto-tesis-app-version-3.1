@@ -14,6 +14,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
 import { MENU_ITEMS } from '../constants/menuConfig';
 import colors from '../constants/colors';
+import spacing from '../constants/spacing';
+import { fontSizes } from '../constants/typography';
+import { ICON_SIZES } from '../constants/icons';
 
 /**
  * Menú principal - Dashboard dinámico según rol
@@ -53,15 +56,11 @@ export default function MainMenuScreen({ navigation }) {
           onPress: async () => {
             try {
               await AsyncStorage.removeItem(STORAGE_KEYS.USER);
-              // Reset a [RoleSelection, Login] para que el usuario vea Login
-              // pero pueda usar flecha ← para volver a RoleSelection y cambiar rol
+              // Navegar a RoleSelection; sesión solo se pierde al cerrar manualmente
               navigation.dispatch(
                 CommonActions.reset({
-                  index: 1,
-                  routes: [
-                    { name: 'RoleSelection' },
-                    { name: 'Login' },
-                  ],
+                  index: 0,
+                  routes: [{ name: 'RoleSelection' }],
                 })
               );
             } catch (error) {
@@ -85,11 +84,18 @@ export default function MainMenuScreen({ navigation }) {
           <Text style={styles.welcome}>Bienvenido</Text>
           {user && <Text style={styles.userName}>{user.name}</Text>}
           {roleKey && (
-            <View style={styles.roleBadge}>
+            <View
+              style={[
+                styles.roleBadge,
+                roleKey === ROLES.DOCTOR ? styles.roleBadgeDoctor : styles.roleBadgePatient,
+              ]}
+            >
               <Text style={styles.roleText}>Modo {roleLabel}</Text>
             </View>
           )}
         </View>
+
+        <View style={styles.sectionDivider} />
 
         <View style={styles.dashboard}>
           {menuItems.map((item) => (
@@ -97,10 +103,10 @@ export default function MainMenuScreen({ navigation }) {
               key={item.id}
               style={styles.card}
               onPress={() => navigation.navigate(item.screen)}
-              activeOpacity={0.85}
+              activeOpacity={0.82}
             >
               <View style={styles.cardIcon}>
-                <Ionicons name={item.icon} size={24} color={colors.primary} />
+                <Ionicons name={item.icon} size={ICON_SIZES.menuCard} color={colors.primary} />
               </View>
               <View style={styles.cardContent}>
                 <Text style={styles.cardTitle}>{item.title}</Text>
@@ -108,15 +114,18 @@ export default function MainMenuScreen({ navigation }) {
                   <Text style={styles.cardBadge}>Próximamente</Text>
                 )}
               </View>
+              <Ionicons name="chevron-forward" size={ICON_SIZES.action} color={colors.textMuted} />
             </TouchableOpacity>
           ))}
+        </View>
 
+        <View style={styles.logoutSection}>
           <TouchableOpacity
             style={styles.logoutButton}
             onPress={handleLogout}
-            activeOpacity={0.85}
+            activeOpacity={0.82}
           >
-            <Ionicons name="log-out-outline" size={20} color={colors.error} />
+            <Ionicons name="log-out-outline" size={ICON_SIZES.action} color={colors.critical} />
             <Text style={styles.logoutText}>Cerrar sesión</Text>
           </TouchableOpacity>
         </View>
@@ -131,88 +140,111 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: 24,
+    padding: spacing.xxl,
+    paddingBottom: spacing.screen,
   },
   header: {
-    marginBottom: 32,
+    marginBottom: spacing.xxxl,
   },
   welcome: {
-    fontSize: 15,
+    fontSize: 14,
+    letterSpacing: 0.3,
     color: colors.textSecondary,
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   userName: {
-    fontSize: 26,
+    fontSize: fontSizes.display,
     fontWeight: '700',
     color: colors.textLight,
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   roleBadge: {
     alignSelf: 'flex-start',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: spacing.radiusMd,
+  },
+  roleBadgePatient: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
+  },
+  roleBadgeDoctor: {
+    backgroundColor: colors.primaryDark,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
   },
   roleText: {
     color: colors.white,
-    fontSize: 14,
+    fontSize: fontSizes.sm,
     fontWeight: '600',
   },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    opacity: 0.5,
+    marginBottom: spacing.xxl,
+  },
   dashboard: {
-    gap: 12,
+    gap: spacing.md,
   },
   card: {
     backgroundColor: colors.card,
-    padding: 20,
-    borderRadius: 12,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    borderRadius: spacing.radiusLg,
     flexDirection: 'row',
     alignItems: 'center',
-    // Ligera sombra para dar profundidad al dashboard
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 5,
-    elevation: 3,
+    shadowRadius: 8,
+    elevation: 2,
   },
   cardIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
+    width: 44,
+    height: 44,
+    borderRadius: spacing.radiusMd,
     backgroundColor: colors.cardIconBg,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: spacing.lg,
   },
   cardContent: {
     flex: 1,
   },
   cardTitle: {
-    fontSize: 17,
+    fontSize: fontSizes.lg,
     fontWeight: '600',
     color: colors.text,
   },
   cardBadge: {
-    fontSize: 13,
+    fontSize: fontSizes.sm,
     color: colors.textMuted,
-    marginTop: 4,
+    marginTop: spacing.xs,
     fontStyle: 'italic',
   },
+  logoutSection: {
+    marginTop: spacing.xxl,
+    paddingTop: spacing.xxl,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    opacity: 0.6,
+  },
   logoutButton: {
-    marginTop: 24,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    borderRadius: 8,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: spacing.radiusMd,
     borderWidth: 1,
-    borderColor: colors.error,
-    gap: 8,
-    // Sin sombra: se mantiene como acción secundaria plana
+    borderColor: colors.critical,
+    gap: spacing.sm,
   },
   logoutText: {
-    color: colors.error,
-    fontSize: 16,
+    color: colors.critical,
+    fontSize: fontSizes.base,
     fontWeight: '600',
   },
 });

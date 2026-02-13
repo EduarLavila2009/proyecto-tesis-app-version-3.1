@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/storage';
 import colors from '../constants/colors';
+import { fontSizes } from '../constants/typography';
 
 import RoleSelectionScreen from '../screens/RoleSelectionScreen';
 import LoginScreen from '../screens/LoginScreen';
@@ -13,7 +14,8 @@ import ProfileScreen from '../screens/ProfileScreen';
 import RobotFunctionsScreen from '../screens/RobotFunctionsScreen';
 import MedicalHistoryScreen from '../screens/MedicalHistoryScreen';
 import IAMedicaScreen from '../screens/IAMedicaScreen';
-import PatientsScreen from '../screens/PatientsScreen';
+import PatientsListScreen from '../screens/PatientsListScreen';
+import PatientDetailScreen from '../screens/PatientDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -23,7 +25,7 @@ const Stack = createNativeStackNavigator();
 const headerOptions = {
   headerStyle: { backgroundColor: colors.primary },
   headerTintColor: colors.white,
-  headerTitleStyle: { fontWeight: '600', fontSize: 18 },
+  headerTitleStyle: { fontWeight: '600', fontSize: fontSizes.lg },
   headerBackTitleVisible: false,
 };
 
@@ -144,10 +146,18 @@ export default function AppNavigator() {
         />
         <Stack.Screen
           name="Patients"
-          component={PatientsScreen}
+          component={PatientsListScreen}
           options={{
             ...secondaryScreenOptions,
             title: 'Pacientes',
+          }}
+        />
+        <Stack.Screen
+          name="PatientDetail"
+          component={PatientDetailScreen}
+          options={{
+            ...secondaryScreenOptions,
+            title: 'Detalle del paciente',
           }}
         />
       </Stack.Navigator>

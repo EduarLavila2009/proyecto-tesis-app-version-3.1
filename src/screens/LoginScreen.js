@@ -15,6 +15,8 @@ import { CommonActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/storage';
 import colors from '../constants/colors';
+import spacing from '../constants/spacing';
+import { fontSizes } from '../constants/typography';
 import { buttons } from '../constants/theme';
 
 const isValidEmail = (email) => {
@@ -45,15 +47,40 @@ export default function LoginScreen({ navigation }) {
     if (!validateForm()) return;
 
     try {
+      const emailTrim = email.trim().toLowerCase();
+
+      // Buscar usuario en el array USERS (permite múltiples cuentas)
+      const usersJson = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
+      if (usersJson) {
+        let users = [];
+        try {
+          users = JSON.parse(usersJson);
+        } catch (_) {}
+        const userData = users.find(
+          (u) => u.email === emailTrim && u.password === password
+        );
+        if (userData) {
+          await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: 'MainMenu' }],
+            })
+          );
+          return;
+        }
+      }
+
+      // Compatibilidad: si no está en USERS, comprobar USER (sesión anterior)
       const storedUser = await AsyncStorage.getItem(STORAGE_KEYS.USER);
       let userData = null;
       if (storedUser) {
-        userData = JSON.parse(storedUser);
+        try {
+          userData = JSON.parse(storedUser);
+        } catch (_) {}
       }
-
-      if (userData && userData.email === email.trim() && userData.password === password) {
+      if (userData && userData.email === emailTrim && userData.password === password) {
         await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-        // Reset a solo MainMenu: limpia el stack de auth (RoleSelection, Login)
         navigation.dispatch(
           CommonActions.reset({
             index: 0,
@@ -83,52 +110,58 @@ export default function LoginScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>Iniciar sesión</Text>
-          <Text style={styles.subtitle}>MEDICAL corp</Text>
+          <View style={styles.header}>
+            <Text style={styles.title}>Iniciar sesión</Text>
+            <Text style={styles.subtitle}>MEDICAL corp</Text>
+          </View>
 
           <View style={styles.form}>
-            <TextInput
-              style={[styles.input, errors.email && styles.inputError]}
-              placeholder="Correo electrónico"
-              placeholderTextColor={colors.textMuted}
-              value={email}
-              onChangeText={(text) => {
-                setEmail(text);
-                if (errors.email) setErrors({ ...errors, email: null });
-              }}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+            <View style={styles.fieldGroup}>
+              <TextInput
+                style={[styles.input, errors.email && styles.inputError]}
+                placeholder="Correo electrónico"
+                placeholderTextColor={colors.textMuted}
+                value={email}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  if (errors.email) setErrors({ ...errors, email: null });
+                }}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+            </View>
 
-            <TextInput
-              style={[styles.input, errors.password && styles.inputError]}
-              placeholder="Contraseña"
-              placeholderTextColor={colors.textMuted}
-              value={password}
-              onChangeText={(text) => {
-                setPassword(text);
-                if (errors.password) setErrors({ ...errors, password: null });
-              }}
-              secureTextEntry
-            />
-            {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+            <View style={styles.fieldGroup}>
+              <TextInput
+                style={[styles.input, errors.password && styles.inputError]}
+                placeholder="Contraseña"
+                placeholderTextColor={colors.textMuted}
+                value={password}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  if (errors.password) setErrors({ ...errors, password: null });
+                }}
+                secureTextEntry
+              />
+              {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+            </View>
 
             <TouchableOpacity
               style={[buttons.primary, styles.primaryButton]}
               onPress={handleLogin}
-              activeOpacity={0.85}
+              activeOpacity={0.82}
             >
               <Text style={buttons.primaryText}>Iniciar sesión</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[buttons.secondary, styles.secondaryButton]}
+              style={styles.secondaryButton}
               onPress={() => navigation.navigate('Register')}
-              activeOpacity={0.85}
+              activeOpacity={0.82}
             >
-              <Text style={buttons.secondaryText}>¿No tienes cuenta? Regístrate</Text>
+              <Text style={styles.secondaryButtonText}>¿No tienes cuenta? Regístrate</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -147,46 +180,77 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 24,
+    padding: spacing.xxl,
+    paddingBottom: spacing.screen,
     justifyContent: 'center',
   },
+  header: {
+    marginBottom: spacing.xxxl,
+  },
   title: {
-    fontSize: 24,
+    fontSize: fontSizes.display,
     fontWeight: '700',
     color: colors.textLight,
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: spacing.sm,
+    letterSpacing: 0.3,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: fontSizes.base - 1,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 32,
+    letterSpacing: 0.5,
   },
   form: {
-    gap: 16,
+    gap: 0,
+  },
+  fieldGroup: {
+    marginBottom: spacing.lg,
   },
   input: {
     backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 8,
-    fontSize: 16,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    borderRadius: spacing.radiusMd,
+    fontSize: fontSizes.base,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderLight,
     color: colors.text,
+    minHeight: 52,
   },
   inputError: {
     borderColor: colors.error,
+    borderWidth: 1.5,
   },
   errorText: {
     color: colors.error,
-    fontSize: 12,
-    marginTop: -8,
+    fontSize: fontSizes.xs,
+    marginTop: spacing.xs,
+    marginLeft: spacing.xs,
   },
   primaryButton: {
-    marginTop: 8,
+    marginTop: spacing.xxl,
+    borderRadius: spacing.radiusMd,
+    shadowColor: colors.black,
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 3,
   },
   secondaryButton: {
-    marginTop: 8,
+    marginTop: spacing.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: spacing.radiusMd,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  secondaryButtonText: {
+    color: colors.textLight,
+    fontSize: fontSizes.base,
+    fontWeight: '500',
   },
 });
