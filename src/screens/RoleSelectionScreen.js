@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  SafeAreaView,
-  ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
@@ -14,6 +7,7 @@ import colors from '../constants/colors';
 import spacing from '../constants/spacing';
 import { fontSizes } from '../constants/typography';
 import { ICON_SIZES } from '../constants/icons';
+import { PressableScale } from '../components';
 
 /**
  * Pantalla de selección de rol - SIEMPRE la primera del flujo de autenticación.
@@ -39,41 +33,51 @@ export default function RoleSelectionScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.brand}>MEDICAL corp</Text>
-          <Text style={styles.title}>¿Qué modo deseas usar?</Text>
-          <Text style={styles.subtitle}>
+          <Text style={styles.brand} allowFontScaling>
+            MEDICAL corp
+          </Text>
+          <Text style={styles.title} allowFontScaling>
+            ¿Qué modo deseas usar?
+          </Text>
+          <Text style={styles.subtitle} allowFontScaling>
             Selecciona el perfil con el que vas a acceder a la aplicación.
           </Text>
         </View>
 
         <View style={styles.cardsContainer}>
-          <TouchableOpacity
+          <PressableScale
             style={styles.card}
             onPress={() => handleRoleSelect(ROLES.PATIENT)}
-            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Modo paciente. Accede a tu información médica y asistencia"
           >
             <View style={styles.cardIconWrapper}>
               <Ionicons name="person-circle-outline" size={ICON_SIZES.roleCard} color={colors.primary} />
             </View>
-            <Text style={styles.cardTitle}>PACIENTE</Text>
-            <Text style={styles.cardDescription}>
+            <Text style={styles.cardTitle} allowFontScaling>
+              PACIENTE
+            </Text>
+            <Text style={styles.cardDescription} allowFontScaling>
               Accede a tu información médica y asistencia
             </Text>
-          </TouchableOpacity>
+          </PressableScale>
 
-          <TouchableOpacity
+          <PressableScale
             style={styles.card}
             onPress={() => handleRoleSelect(ROLES.DOCTOR)}
-            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Modo médico. Gestiona pacientes y funciones del robot"
           >
             <View style={styles.cardIconWrapper}>
               <Ionicons name="medkit-outline" size={ICON_SIZES.roleCard} color={colors.primary} />
             </View>
-            <Text style={styles.cardTitle}>MÉDICO</Text>
-            <Text style={styles.cardDescription}>
+            <Text style={styles.cardTitle} allowFontScaling>
+              MÉDICO
+            </Text>
+            <Text style={styles.cardDescription} allowFontScaling>
               Gestiona pacientes y funciones del robot
             </Text>
-          </TouchableOpacity>
+          </PressableScale>
         </View>
       </ScrollView>
     </SafeAreaView>

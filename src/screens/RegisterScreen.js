@@ -3,13 +3,21 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   SafeAreaView,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
+
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { CommonActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES, DEFAULT_MEDICAL_HISTORY } from '../constants/storage';
@@ -17,6 +25,7 @@ import colors from '../constants/colors';
 import spacing from '../constants/spacing';
 import { fontSizes } from '../constants/typography';
 import { buttons } from '../constants/theme';
+import { PressableScale } from '../components';
 
 const isValidEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,6 +54,7 @@ export default function RegisterScreen({ navigation }) {
   const [errors, setErrors] = useState({});
 
   const validateForm = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     const newErrors = {};
     if (!name.trim()) newErrors.name = 'El nombre es obligatorio';
     if (!email.trim()) newErrors.email = 'El correo es obligatorio';
@@ -92,7 +102,7 @@ export default function RegisterScreen({ navigation }) {
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
-          routes: [{ name: 'MainMenu' }],
+          routes: [{ name: 'MainTabs' }],
         })
       );
     } catch (error) {
@@ -112,8 +122,12 @@ export default function RegisterScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <Text style={styles.title}>Registro</Text>
-            <Text style={styles.subtitle}>Crear cuenta en MEDICAL corp</Text>
+            <Text style={styles.title} allowFontScaling>
+              Registro
+            </Text>
+            <Text style={styles.subtitle} allowFontScaling>
+              Crear cuenta en MEDICAL corp
+            </Text>
           </View>
 
           <View style={styles.form}>
@@ -127,8 +141,14 @@ export default function RegisterScreen({ navigation }) {
                   setName(text);
                   if (errors.name) setErrors({ ...errors, name: null });
                 }}
+                accessibilityLabel="Campo de nombre completo"
+                allowFontScaling
               />
-              {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+              {errors.name && (
+                <Text style={styles.errorText} allowFontScaling>
+                  {errors.name}
+                </Text>
+              )}
             </View>
 
             <View style={styles.fieldGroup}>
@@ -146,8 +166,14 @@ export default function RegisterScreen({ navigation }) {
                 autoCorrect={false}
                 selectionColor={colors.primary}
                 cursorColor={colors.primary}
+                accessibilityLabel="Campo de correo electrónico"
+                allowFontScaling
               />
-              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+              {errors.email && (
+                <Text style={styles.errorText} allowFontScaling>
+                  {errors.email}
+                </Text>
+              )}
             </View>
 
             <View style={styles.fieldGroup}>
@@ -161,8 +187,14 @@ export default function RegisterScreen({ navigation }) {
                   if (errors.password) setErrors({ ...errors, password: null });
                 }}
                 secureTextEntry
+                accessibilityLabel="Campo de contraseña"
+                allowFontScaling
               />
-              {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+              {errors.password && (
+                <Text style={styles.errorText} allowFontScaling>
+                  {errors.password}
+                </Text>
+              )}
             </View>
 
             <View style={styles.fieldGroup}>
@@ -176,27 +208,37 @@ export default function RegisterScreen({ navigation }) {
                   if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: null });
                 }}
                 secureTextEntry
+                accessibilityLabel="Campo de confirmar contraseña"
+                allowFontScaling
               />
               {errors.confirmPassword && (
-                <Text style={styles.errorText}>{errors.confirmPassword}</Text>
+                <Text style={styles.errorText} allowFontScaling>
+                  {errors.confirmPassword}
+                </Text>
               )}
             </View>
 
-            <TouchableOpacity
+            <PressableScale
               style={[buttons.primary, styles.primaryButton]}
               onPress={handleRegister}
-              activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityLabel="Registrarse, crear cuenta"
             >
-              <Text style={buttons.primaryText}>Registrarse</Text>
-            </TouchableOpacity>
+              <Text style={buttons.primaryText} allowFontScaling>
+                Registrarse
+              </Text>
+            </PressableScale>
 
-            <TouchableOpacity
+            <PressableScale
               style={styles.secondaryButton}
               onPress={() => navigation.goBack()}
-              activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityLabel="Volver al inicio de sesión"
             >
-              <Text style={styles.secondaryButtonText}>¿Ya tienes cuenta? Inicia sesión</Text>
-            </TouchableOpacity>
+              <Text style={styles.secondaryButtonText} allowFontScaling>
+                ¿Ya tienes cuenta? Inicia sesión
+              </Text>
+            </PressableScale>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

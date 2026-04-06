@@ -1,13 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  SafeAreaView,
-  ScrollView,
-  Alert,
-} from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, Alert } from 'react-native';
 import { CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -17,6 +9,7 @@ import colors from '../constants/colors';
 import spacing from '../constants/spacing';
 import { fontSizes } from '../constants/typography';
 import { ICON_SIZES } from '../constants/icons';
+import { PressableScale } from '../components';
 
 /**
  * Menú principal - Dashboard dinámico según rol
@@ -81,8 +74,14 @@ export default function MainMenuScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.welcome}>Bienvenido</Text>
-          {user && <Text style={styles.userName}>{user.name}</Text>}
+          <Text style={styles.welcome} allowFontScaling>
+            Bienvenido
+          </Text>
+          {user && (
+            <Text style={styles.userName} allowFontScaling>
+              {user.name}
+            </Text>
+          )}
           {roleKey && (
             <View
               style={[
@@ -90,7 +89,9 @@ export default function MainMenuScreen({ navigation }) {
                 roleKey === ROLES.DOCTOR ? styles.roleBadgeDoctor : styles.roleBadgePatient,
               ]}
             >
-              <Text style={styles.roleText}>Modo {roleLabel}</Text>
+              <Text style={styles.roleText} allowFontScaling>
+                Modo {roleLabel}
+              </Text>
             </View>
           )}
         </View>
@@ -99,35 +100,47 @@ export default function MainMenuScreen({ navigation }) {
 
         <View style={styles.dashboard}>
           {menuItems.map((item) => (
-            <TouchableOpacity
+            <PressableScale
               key={item.id}
               style={styles.card}
               onPress={() => navigation.navigate(item.screen)}
-              activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityLabel={
+                item.isPlaceholder
+                  ? `${item.title}, próximamente`
+                  : `Abrir ${item.title}`
+              }
             >
               <View style={styles.cardIcon}>
                 <Ionicons name={item.icon} size={ICON_SIZES.menuCard} color={colors.primary} />
               </View>
               <View style={styles.cardContent}>
-                <Text style={styles.cardTitle}>{item.title}</Text>
+                <Text style={styles.cardTitle} allowFontScaling>
+                  {item.title}
+                </Text>
                 {item.isPlaceholder && (
-                  <Text style={styles.cardBadge}>Próximamente</Text>
+                  <Text style={styles.cardBadge} allowFontScaling>
+                    Próximamente
+                  </Text>
                 )}
               </View>
               <Ionicons name="chevron-forward" size={ICON_SIZES.action} color={colors.textMuted} />
-            </TouchableOpacity>
+            </PressableScale>
           ))}
         </View>
 
         <View style={styles.logoutSection}>
-          <TouchableOpacity
+          <PressableScale
             style={styles.logoutButton}
             onPress={handleLogout}
-            activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar sesión"
           >
             <Ionicons name="log-out-outline" size={ICON_SIZES.action} color={colors.critical} />
-            <Text style={styles.logoutText}>Cerrar sesión</Text>
-          </TouchableOpacity>
+            <Text style={styles.logoutText} allowFontScaling>
+              Cerrar sesión
+            </Text>
+          </PressableScale>
         </View>
       </ScrollView>
     </SafeAreaView>

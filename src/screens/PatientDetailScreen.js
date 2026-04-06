@@ -53,7 +53,9 @@ export default function PatientDetailScreen({ route }) {
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Cargando...</Text>
+          <Text style={styles.loadingText} allowFontScaling>
+            Cargando...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -63,7 +65,9 @@ export default function PatientDetailScreen({ route }) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
-          <Text style={styles.errorText}>Paciente no encontrado.</Text>
+          <Text style={styles.errorText} allowFontScaling>
+            Paciente no encontrado.
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -77,8 +81,12 @@ export default function PatientDetailScreen({ route }) {
 
   const Row = ({ label, value }) => (
     <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{value && String(value).trim() ? value : '—'}</Text>
+      <Text style={styles.label} allowFontScaling>
+        {label}
+      </Text>
+      <Text style={styles.value} allowFontScaling>
+        {value && String(value).trim() ? value : '—'}
+      </Text>
     </View>
   );
 
@@ -89,14 +97,18 @@ export default function PatientDetailScreen({ route }) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.block}>
-          <Text style={styles.blockTitle}>Datos del paciente</Text>
+          <Text style={styles.blockTitle} allowFontScaling>
+            Datos del paciente
+          </Text>
           <Row label="Nombre" value={patient.name} />
           <Row label="ID" value={patient.id} />
           <Row label="Correo" value={patient.email} />
         </View>
 
         <View style={styles.block}>
-          <Text style={styles.blockTitle}>Historial médico</Text>
+          <Text style={styles.blockTitle} allowFontScaling>
+            Historial médico
+          </Text>
           {hasHistory ? (
             <>
               <Row label="Tipo de sangre" value={h.bloodType} />
@@ -106,7 +118,9 @@ export default function PatientDetailScreen({ route }) {
               <Row label="Notas adicionales" value={h.notes} />
             </>
           ) : (
-            <Text style={styles.noData}>Sin datos médicos registrados.</Text>
+            <Text style={styles.noData} allowFontScaling>
+              Sin datos médicos registrados.
+            </Text>
           )}
         </View>
       </ScrollView>

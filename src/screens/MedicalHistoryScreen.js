@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
+  FlatList,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -13,15 +12,42 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES, DEFAULT_MEDICAL_HISTORY } from '../constants/storage';
-import colors from '../constants/colors';
-import spacing from '../constants/spacing';
-import { fontSizes } from '../constants/typography';
-import { buttons } from '../constants/theme';
+import { Header, Card, Button } from '../components';
+import { colors, spacing, typography } from '../theme';
+
+/**
+ * Registros clínicos de demostración (solo UI; no se persisten).
+ * La ficha editable debajo sigue siendo la fuente de verdad en AsyncStorage.
+ */
+const SIMULATED_CLINICAL_RECORDS = [
+  {
+    id: '1',
+    date: '5 abr 2026',
+    description:
+      'Consulta de seguimiento — presión arterial 118/76 mmHg, sin alteraciones.',
+  },
+  {
+    id: '2',
+    date: '22 mar 2026',
+    description:
+      'Análisis de laboratorio recibido. Resultados dentro de parámetros normales.',
+  },
+  {
+    id: '3',
+    date: '10 mar 2026',
+    description: 'Vacuna antigripal aplicada. Sin reacciones adversas.',
+  },
+  {
+    id: '4',
+    date: '28 feb 2026',
+    description:
+      'Teleconsulta: revisión de medicación. Se mantiene pauta actual.',
+  },
+];
 
 /**
  * Historial médico - Solo rol Paciente
  * Carga y edita el historial del usuario actual. Guarda en AsyncStorage.
- * Estructura preparada para que el Médico consulte por ID en fases posteriores.
  */
 export default function MedicalHistoryScreen() {
   const [user, setUser] = useState(null);
@@ -63,7 +89,7 @@ export default function MedicalHistoryScreen() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!user) return;
 
     const medicalHistory = {
@@ -77,10 +103,8 @@ export default function MedicalHistoryScreen() {
     try {
       const updatedUser = { ...user, medicalHistory };
 
-      // Actualizar usuario actual en sesión
       await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
 
-      // Actualizar en el array USERS (para consulta por ID del Médico)
       if (user.id) {
         const usersJson = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
         let users = [];
@@ -102,13 +126,150 @@ export default function MedicalHistoryScreen() {
       console.error('Error al guardar historial:', error);
       Alert.alert('Error', 'No se pudo guardar el historial.');
     }
-  };
+  }, [user, bloodType, allergies, chronicDiseases, medications, notes]);
+
+  const renderRecord = useCallback(({ item }) => {
+    return (
+      <View style={styles.cardSpacing}>
+        <Card style={styles.recordCard}>
+          <Text style={styles.recordDate} allowFontScaling>
+            {item.date}
+          </Text>
+          <Text style={styles.recordDescription} allowFontScaling>
+            {item.description}
+          </Text>
+        </Card>
+      </View>
+    );
+  }, []);
+
+  const listHeader = useCallback(
+    () => (
+      <View style={styles.listHeader}>
+        <Header
+          title="Historial Clínico"
+          style={styles.headerBlock}
+          textStyle={styles.headerTitle}
+        />
+        <Text style={styles.sectionLabel} allowFontScaling>
+          Registros recientes
+        </Text>
+      </View>
+    ),
+    []
+  );
+
+  const listFooter = useCallback(
+    () => (
+      <View style={styles.footer}>
+        <Text style={styles.sectionLabel} allowFontScaling>
+          Ficha clínica
+        </Text>
+
+        <View style={styles.idBlock}>
+          <Text style={styles.idLabel} allowFontScaling>
+            ID del paciente
+          </Text>
+          <Text style={styles.idValue} allowFontScaling>
+            {user?.id || '—'}
+          </Text>
+        </View>
+
+        <View style={styles.form}>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label} allowFontScaling>
+              Tipo de sangre
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej. O+, A-, B+"
+              placeholderTextColor={colors.textSecondary}
+              value={bloodType}
+              onChangeText={setBloodType}
+              accessibilityLabel="Campo de tipo de sangre"
+              allowFontScaling
+            />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label} allowFontScaling>
+              Alergias
+            </Text>
+            <TextInput
+              style={[styles.input, styles.inputMultiline]}
+              placeholder="Alergias conocidas"
+              placeholderTextColor={colors.textSecondary}
+              value={allergies}
+              onChangeText={setAllergies}
+              multiline
+              accessibilityLabel="Campo de alergias"
+              allowFontScaling
+            />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label} allowFontScaling>
+              Enfermedades crónicas
+            </Text>
+            <TextInput
+              style={[styles.input, styles.inputMultiline]}
+              placeholder="Enfermedades crónicas"
+              placeholderTextColor={colors.textSecondary}
+              value={chronicDiseases}
+              onChangeText={setChronicDiseases}
+              multiline
+              accessibilityLabel="Campo de enfermedades crónicas"
+              allowFontScaling
+            />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label} allowFontScaling>
+              Medicamentos actuales
+            </Text>
+            <TextInput
+              style={[styles.input, styles.inputMultiline]}
+              placeholder="Medicamentos que toma actualmente"
+              placeholderTextColor={colors.textSecondary}
+              value={medications}
+              onChangeText={setMedications}
+              multiline
+              accessibilityLabel="Campo de medicamentos actuales"
+              allowFontScaling
+            />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label} allowFontScaling>
+              Notas adicionales
+            </Text>
+            <TextInput
+              style={[styles.input, styles.inputMultiline]}
+              placeholder="Otras observaciones"
+              placeholderTextColor={colors.textSecondary}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              accessibilityLabel="Campo de notas adicionales"
+              allowFontScaling
+            />
+          </View>
+
+          <Button
+            title="Guardar cambios"
+            onPress={handleSave}
+            style={styles.saveButton}
+            accessibilityLabel="Guardar cambios del historial médico"
+          />
+        </View>
+      </View>
+    ),
+    [user, bloodType, allergies, chronicDiseases, medications, notes, handleSave]
+  );
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
-          <Text style={styles.loadingText}>Cargando...</Text>
+          <Text style={styles.loadingText} allowFontScaling>
+            Cargando...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -118,7 +279,9 @@ export default function MedicalHistoryScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
-          <Text style={styles.forbiddenText}>Esta pantalla es solo para el rol Paciente.</Text>
+          <Text style={styles.forbiddenText} allowFontScaling>
+            Esta pantalla es solo para el rol Paciente.
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -131,82 +294,25 @@ export default function MedicalHistoryScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
+        <FlatList
+          data={SIMULATED_CLINICAL_RECORDS}
+          keyExtractor={(item) => item.id}
+          renderItem={renderRecord}
+          ListHeaderComponent={listHeader}
+          ListFooterComponent={listFooter}
+          extraData={{
+            user,
+            bloodType,
+            allergies,
+            chronicDiseases,
+            medications,
+            notes,
+          }}
+          contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-        >
-          {/* ID del paciente (no editable) */}
-          <View style={styles.idBlock}>
-            <Text style={styles.idLabel}>ID del paciente</Text>
-            <Text style={styles.idValue}>{user.id || '—'}</Text>
-          </View>
-
-          <View style={styles.form}>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Tipo de sangre</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ej. O+, A-, B+"
-                placeholderTextColor={colors.textMuted}
-                value={bloodType}
-                onChangeText={setBloodType}
-              />
-            </View>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Alergias</Text>
-              <TextInput
-                style={[styles.input, styles.inputMultiline]}
-                placeholder="Alergias conocidas"
-                placeholderTextColor={colors.textMuted}
-                value={allergies}
-                onChangeText={setAllergies}
-                multiline
-              />
-            </View>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Enfermedades crónicas</Text>
-              <TextInput
-                style={[styles.input, styles.inputMultiline]}
-                placeholder="Enfermedades crónicas"
-                placeholderTextColor={colors.textMuted}
-                value={chronicDiseases}
-                onChangeText={setChronicDiseases}
-                multiline
-              />
-            </View>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Medicamentos actuales</Text>
-              <TextInput
-                style={[styles.input, styles.inputMultiline]}
-                placeholder="Medicamentos que toma actualmente"
-                placeholderTextColor={colors.textMuted}
-                value={medications}
-                onChangeText={setMedications}
-                multiline
-              />
-            </View>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Notas adicionales</Text>
-              <TextInput
-                style={[styles.input, styles.inputMultiline]}
-                placeholder="Otras observaciones"
-                placeholderTextColor={colors.textMuted}
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[buttons.primary, styles.saveButton]}
-              onPress={handleSave}
-              activeOpacity={0.82}
-            >
-              <Text style={buttons.primaryText}>Guardar cambios</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={8}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -215,81 +321,130 @@ export default function MedicalHistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundLight,
+    backgroundColor: colors.background,
   },
   keyboardView: {
     flex: 1,
   },
-  scrollContent: {
-    padding: spacing.xxl,
-    paddingBottom: spacing.screen,
+  listContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl + spacing.lg,
+  },
+  listHeader: {
+    marginBottom: spacing.sm,
+  },
+  headerBlock: {
+    marginBottom: spacing.md,
+    alignItems: 'flex-start',
+  },
+  headerTitle: {
+    fontSize: typography.title.fontSize,
+    fontWeight: typography.title.fontWeight,
+    color: colors.textPrimary,
+    textAlign: 'left',
+    width: '100%',
+  },
+  sectionLabel: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
+  cardSpacing: {
+    marginBottom: spacing.sm,
+  },
+  recordCard: {
+    width: '100%',
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+  },
+  recordDate: {
+    fontSize: typography.subtitle.fontSize,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  recordDescription: {
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
+    color: colors.textSecondary,
+    lineHeight: typography.body.fontSize * 1.45,
+  },
+  footer: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.xxl,
+    padding: spacing.lg,
   },
   loadingText: {
-    fontSize: fontSizes.base,
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
     color: colors.textSecondary,
   },
   forbiddenText: {
-    fontSize: fontSizes.base,
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
     color: colors.textSecondary,
     textAlign: 'center',
   },
   idBlock: {
-    marginBottom: spacing.xxl,
-    padding: spacing.lg,
-    backgroundColor: colors.surfaceElevated,
-    borderRadius: spacing.radiusMd,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: spacing.radiusCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   idLabel: {
-    fontSize: fontSizes.sm,
+    fontSize: typography.caption.fontSize,
+    fontWeight: '600',
     color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
   idValue: {
-    fontSize: fontSizes.xl,
+    fontSize: typography.subtitle.fontSize,
     fontWeight: '700',
-    color: colors.textLight,
+    color: colors.textPrimary,
   },
   form: {
-    gap: 0,
+    paddingBottom: spacing.md,
   },
   fieldGroup: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   label: {
-    fontSize: fontSizes.sm,
+    fontSize: typography.caption.fontSize,
+    fontWeight: '600',
     color: colors.textSecondary,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   input: {
-    backgroundColor: colors.backgroundLighter,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    borderRadius: spacing.radiusMd,
-    fontSize: fontSizes.base,
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: spacing.radiusInput,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    color: colors.textLight,
-    minHeight: 52,
+    borderColor: colors.borderSubtle,
+    color: colors.textPrimary,
+    minHeight: spacing.lg * 2,
   },
   inputMultiline: {
-    minHeight: 80,
+    minHeight: spacing.xl + spacing.lg,
     textAlignVertical: 'top',
   },
   saveButton: {
-    marginTop: spacing.xxl,
-    borderRadius: spacing.radiusMd,
-    shadowColor: colors.black,
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 3,
+    width: '100%',
+    marginTop: spacing.lg,
   },
 });

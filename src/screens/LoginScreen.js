@@ -2,255 +2,298 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   SafeAreaView,
-  Alert,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
+
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { CommonActions } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '../constants/storage';
-import colors from '../constants/colors';
-import spacing from '../constants/spacing';
-import { fontSizes } from '../constants/typography';
-import { buttons } from '../constants/theme';
+import { colors, spacing, typography } from '../theme';
+import { Card, Header, Input, Button, PressableScale } from '../components';
+import * as authService from '../services/authService';
 
-const isValidEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-};
-
+/**
+ * Pantalla de inicio de sesión — UI con tema global; toda la lógica en `authService.login`.
+ */
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
-
-  const validateForm = () => {
-    const newErrors = {};
-    if (!email.trim()) {
-      newErrors.email = 'El correo es obligatorio';
-    } else if (!isValidEmail(email)) {
-      newErrors.email = 'Formato de correo no válido';
-    }
-    if (!password) {
-      newErrors.password = 'La contraseña es obligatoria';
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const [loginError, setLoginError] = useState('');
 
   const handleLogin = async () => {
-    if (!validateForm()) return;
+    setLoginError('');
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 
-    try {
-      const emailTrim = email.trim().toLowerCase();
+    const res = await authService.login(email, password);
 
-      // Buscar usuario en el array USERS (permite múltiples cuentas)
-      const usersJson = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-      if (usersJson) {
-        let users = [];
-        try {
-          users = JSON.parse(usersJson);
-        } catch (_) {}
-        const userData = users.find(
-          (u) => u.email === emailTrim && u.password === password
-        );
-        if (userData) {
-          await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-          navigation.dispatch(
-            CommonActions.reset({
-              index: 0,
-              routes: [{ name: 'MainMenu' }],
-            })
-          );
-          return;
-        }
-      }
-
-      // Compatibilidad: si no está en USERS, comprobar USER (sesión anterior)
-      const storedUser = await AsyncStorage.getItem(STORAGE_KEYS.USER);
-      let userData = null;
-      if (storedUser) {
-        try {
-          userData = JSON.parse(storedUser);
-        } catch (_) {}
-      }
-      if (userData && userData.email === emailTrim && userData.password === password) {
-        await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-        navigation.dispatch(
-          CommonActions.reset({
-            index: 0,
-            routes: [{ name: 'MainMenu' }],
-          })
-        );
-      } else {
-        Alert.alert(
-          'Error',
-          'Credenciales incorrectas. Regístrate si no tienes cuenta.'
-        );
-      }
-    } catch (error) {
-      console.error('Error en login:', error);
-      Alert.alert('Error', 'Ocurrió un error al iniciar sesión.');
+    if (res.errors) {
+      setErrors(res.errors);
+    } else {
+      setErrors({});
     }
+
+    if (res.success) {
+      setLoginError('');
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'MainTabs' }],
+        })
+      );
+      return;
+    }
+
+    if (res.code === 'STORAGE_ERROR') {
+      console.error('Error en login:', res.error);
+    }
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (res.code === 'VALIDATION_ERROR') {
+      setLoginError('');
+      return;
+    }
+
+    setLoginError(
+      res.message ||
+        (res.code === 'INVALID_CREDENTIALS'
+          ? 'Credenciales incorrectas. Regístrate si no tienes cuenta.'
+          : 'Ocurrió un error al iniciar sesión.')
+    );
   };
 
+  const isSubmitDisabled = email.trim() === '' || password === '';
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+        style={styles.keyboard}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <Text style={styles.title}>Iniciar sesión</Text>
-            <Text style={styles.subtitle}>MEDICAL corp</Text>
+          <View style={styles.headerSection}>
+            <Header
+              title="Iniciar Sesión"
+              style={styles.headerWrap}
+              textStyle={styles.headerTitle}
+            />
+            <Text style={styles.subtitle} allowFontScaling>
+              Accede con tu cuenta MEDICAL corp
+            </Text>
           </View>
 
-          <View style={styles.form}>
-            <View style={styles.fieldGroup}>
-              <TextInput
-                style={[styles.input, errors.email && styles.inputError]}
-                placeholder="Correo electrónico"
-                placeholderTextColor={colors.textMuted}
-                value={email}
-                onChangeText={(text) => {
-                  setEmail(text);
-                  if (errors.email) setErrors({ ...errors, email: null });
-                }}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
+          <View style={styles.cardWrap}>
+            <Card style={styles.card}>
+              <View style={styles.fieldBlock}>
+                <Text style={styles.fieldLabel} allowFontScaling>
+                  Email
+                </Text>
+                <Input
+                  value={email}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    setLoginError('');
+                    if (errors.email) setErrors({ ...errors, email: null });
+                  }}
+                  placeholder="nombre@correo.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  accessibilityLabel="Campo de correo electrónico"
+                  style={[
+                    styles.input,
+                    errors.email ? styles.inputInvalid : null,
+                  ]}
+                />
+                {errors.email ? (
+                  <Text style={styles.fieldError} allowFontScaling>
+                    {errors.email}
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.fieldBlock}>
+                <Text style={styles.fieldLabel} allowFontScaling>
+                  Contraseña
+                </Text>
+                <Input
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    setLoginError('');
+                    if (errors.password) setErrors({ ...errors, password: null });
+                  }}
+                  placeholder="Introduce tu contraseña"
+                  secureTextEntry
+                  accessibilityLabel="Campo de contraseña"
+                  style={[
+                    styles.input,
+                    errors.password ? styles.inputInvalid : null,
+                  ]}
+                />
+                {errors.password ? (
+                  <Text style={styles.fieldError} allowFontScaling>
+                    {errors.password}
+                  </Text>
+                ) : null}
+              </View>
+
+              {loginError ? (
+                <Text
+                  style={styles.loginErrorText}
+                  accessibilityLiveRegion="polite"
+                  allowFontScaling
+                >
+                  {loginError}
+                </Text>
+              ) : null}
+
+              <Button
+                title="Entrar"
+                onPress={handleLogin}
+                disabled={isSubmitDisabled}
+                style={styles.submitBtn}
+                accessibilityLabel="Iniciar sesión, botón Entrar"
               />
-              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-            </View>
-
-            <View style={styles.fieldGroup}>
-              <TextInput
-                style={[styles.input, errors.password && styles.inputError]}
-                placeholder="Contraseña"
-                placeholderTextColor={colors.textMuted}
-                value={password}
-                onChangeText={(text) => {
-                  setPassword(text);
-                  if (errors.password) setErrors({ ...errors, password: null });
-                }}
-                secureTextEntry
-              />
-              {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
-            </View>
-
-            <TouchableOpacity
-              style={[buttons.primary, styles.primaryButton]}
-              onPress={handleLogin}
-              activeOpacity={0.82}
-            >
-              <Text style={buttons.primaryText}>Iniciar sesión</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={() => navigation.navigate('Register')}
-              activeOpacity={0.82}
-            >
-              <Text style={styles.secondaryButtonText}>¿No tienes cuenta? Regístrate</Text>
-            </TouchableOpacity>
+            </Card>
           </View>
+
+          <PressableScale
+            style={styles.linkWrap}
+            onPress={() => navigation.navigate('Register')}
+            accessibilityRole="link"
+            accessibilityLabel="Ir a registro, ¿no tienes cuenta?"
+          >
+            <Text style={styles.linkText} allowFontScaling>
+              ¿No tienes cuenta?{' '}
+              <Text style={styles.linkAccent} allowFontScaling>
+                Regístrate
+              </Text>
+            </Text>
+          </PressableScale>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
+const MAX_FORM_WIDTH = spacing.md * 26;
+const HEADER_TITLE_SIZE = typography.title.fontSize + 6;
+
 const styles = StyleSheet.create({
-  container: {
+  safe: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  keyboardView: {
+  keyboard: {
     flex: 1,
   },
-  scrollContent: {
+  scroll: {
     flexGrow: 1,
-    padding: spacing.xxl,
-    paddingBottom: spacing.screen,
-    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xl + spacing.lg,
   },
-  header: {
-    marginBottom: spacing.xxxl,
+  headerSection: {
+    width: '100%',
+    marginBottom: spacing.xl,
   },
-  title: {
-    fontSize: fontSizes.display,
-    fontWeight: '700',
-    color: colors.textLight,
-    textAlign: 'center',
+  headerWrap: {
+    alignItems: 'flex-start',
     marginBottom: spacing.sm,
-    letterSpacing: 0.3,
+  },
+  headerTitle: {
+    fontSize: HEADER_TITLE_SIZE,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'left',
+    width: '100%',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: fontSizes.base - 1,
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
     color: colors.textSecondary,
-    textAlign: 'center',
-    letterSpacing: 0.5,
+    lineHeight: typography.body.fontSize * 1.45,
+    textAlign: 'left',
+    width: '100%',
+    marginTop: spacing.xs,
   },
-  form: {
-    gap: 0,
+  cardWrap: {
+    width: '100%',
+    maxWidth: MAX_FORM_WIDTH,
+    alignSelf: 'center',
   },
-  fieldGroup: {
+  card: {
+    width: '100%',
+    padding: spacing.lg + spacing.xs,
+  },
+  fieldBlock: {
     marginBottom: spacing.lg,
   },
+  fieldLabel: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
   input: {
-    backgroundColor: colors.card,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    borderRadius: spacing.radiusMd,
-    fontSize: fontSizes.base,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    color: colors.text,
-    minHeight: 52,
+    width: '100%',
+    minHeight: spacing.xl + spacing.md,
   },
-  inputError: {
-    borderColor: colors.error,
-    borderWidth: 1.5,
+  inputInvalid: {
+    borderColor: colors.danger,
+    borderWidth: 2,
   },
-  errorText: {
-    color: colors.error,
-    fontSize: fontSizes.xs,
-    marginTop: spacing.xs,
+  fieldError: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: typography.caption.fontWeight,
+    color: colors.danger,
+    marginTop: spacing.sm,
     marginLeft: spacing.xs,
   },
-  primaryButton: {
-    marginTop: spacing.xxl,
-    borderRadius: spacing.radiusMd,
-    shadowColor: colors.black,
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 3,
+  loginErrorText: {
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
+    color: colors.danger,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    lineHeight: typography.body.fontSize * 1.45,
   },
-  secondaryButton: {
-    marginTop: spacing.md,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: spacing.radiusMd,
+  submitBtn: {
+    width: '100%',
+    marginTop: spacing.sm,
+    minHeight: spacing.xl + spacing.md,
+  },
+  linkWrap: {
+    marginTop: spacing.xl,
+    paddingVertical: spacing.md,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.borderLight,
   },
-  secondaryButtonText: {
-    color: colors.textLight,
-    fontSize: fontSizes.base,
-    fontWeight: '500',
+  linkText: {
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  linkAccent: {
+    color: colors.primary,
+    fontWeight: '600',
   },
 });

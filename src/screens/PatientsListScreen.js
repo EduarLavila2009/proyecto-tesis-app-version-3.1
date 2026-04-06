@@ -1,18 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  SafeAreaView,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, StyleSheet, FlatList, SafeAreaView, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
 import colors from '../constants/colors';
 import spacing from '../constants/spacing';
 import { fontSizes } from '../constants/typography';
+import { PressableScale } from '../components';
 
 /**
  * Lista de pacientes - Solo rol Médico
@@ -55,7 +48,9 @@ export default function PatientsListScreen({ navigation }) {
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Cargando...</Text>
+          <Text style={styles.loadingText} allowFontScaling>
+            Cargando...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -65,7 +60,7 @@ export default function PatientsListScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
-          <Text style={styles.forbiddenText}>
+          <Text style={styles.forbiddenText} allowFontScaling>
             Acceso restringido. Solo médicos pueden ver pacientes.
           </Text>
         </View>
@@ -74,15 +69,22 @@ export default function PatientsListScreen({ navigation }) {
   }
 
   const renderItem = ({ item }) => (
-    <TouchableOpacity
+    <PressableScale
       style={styles.card}
       onPress={() => navigation.navigate('PatientDetail', { patientId: item.id })}
-      activeOpacity={0.82}
+      accessibilityRole="button"
+      accessibilityLabel={`Paciente ${item.name || 'sin nombre'}, identificador ${item.id || '—'}, correo ${item.email || '—'}`}
     >
-      <Text style={styles.cardName}>{item.name || '—'}</Text>
-      <Text style={styles.cardId}>{item.id || '—'}</Text>
-      <Text style={styles.cardEmail}>{item.email || '—'}</Text>
-    </TouchableOpacity>
+      <Text style={styles.cardName} allowFontScaling>
+        {item.name || '—'}
+      </Text>
+      <Text style={styles.cardId} allowFontScaling>
+        {item.id || '—'}
+      </Text>
+      <Text style={styles.cardEmail} allowFontScaling>
+        {item.email || '—'}
+      </Text>
+    </PressableScale>
   );
 
   return (
@@ -94,7 +96,9 @@ export default function PatientsListScreen({ navigation }) {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
-            <Text style={styles.emptyText}>No hay pacientes registrados.</Text>
+            <Text style={styles.emptyText} allowFontScaling>
+              No hay pacientes registrados.
+            </Text>
           </View>
         }
       />

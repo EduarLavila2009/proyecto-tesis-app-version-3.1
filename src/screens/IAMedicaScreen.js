@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -15,6 +14,7 @@ import colors from '../constants/colors';
 import spacing from '../constants/spacing';
 import { fontSizes } from '../constants/typography';
 import { ICON_SIZES } from '../constants/icons';
+import { PressableScale } from '../components';
 
 /**
  * IA médica simulada - Chat de demostración
@@ -230,6 +230,7 @@ export default function IAMedicaScreen() {
                       styles.bubbleText,
                       msg.isUser ? styles.userText : styles.aiText,
                     ]}
+                    allowFontScaling
                   >
                     {msg.text}
                   </Text>
@@ -262,19 +263,23 @@ export default function IAMedicaScreen() {
               onSubmitEditing={handleSend}
               returnKeyType="send"
               blurOnSubmit={false}
+              accessibilityLabel="Campo de mensaje para el asistente médico"
+              allowFontScaling
             />
-            <TouchableOpacity
+            <PressableScale
               style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
               onPress={handleSend}
               disabled={!inputText.trim()}
-              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Enviar mensaje"
+              accessibilityState={{ disabled: !inputText.trim() }}
             >
               <Ionicons
                 name="send-outline"
                 size={ICON_SIZES.action}
                 color={inputText.trim() ? colors.white : colors.textMuted}
               />
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </View>
       </KeyboardAvoidingView>

@@ -1,5 +1,9 @@
 /**
- * Sistema de iconos MEDICAL corp — Tamaños consistentes (Ionicons)
+ * Sistema de iconos MEDICAL corp — Tamaños consistentes.
+ *
+ * Sets con licencia MIT: `@expo/vector-icons` (Ionicons, MaterialCommunityIcons).
+ * Preferir el componente `Icon` (`../components/Icon`) para presets y SVG locales.
+ *
  * Uso: import { ICON_SIZES } from '../constants/icons';
  */
 
