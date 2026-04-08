@@ -2,9 +2,12 @@
  * Punto único de importación del tema global.
  *
  * Uso:
- *   import { colors, spacing, typography } from '../theme';
+ *   import { spacing, typography, useTheme } from '../theme';
+ *   const { colors, cardShadow } = useTheme();
  */
-export { colors } from './colors';
+export { colors, lightColors, darkColors } from './colors';
 export { spacing } from './spacing';
 export { typography } from './typography';
 export { hitSlopComfortable } from './accessibility';
+export { getCardShadow, getSoftShadow, shadows } from './shadows';
+export { ThemeProvider, useTheme } from './themeProvider';

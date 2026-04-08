@@ -2,8 +2,25 @@ import React from 'react';
 import { View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { SvgXml } from 'react-native-svg';
-import { medicalCrossOutlineXml } from '../assets/icons/svgStrings';
-import { colors } from '../theme';
+import {
+  medicalCrossOutlineXml,
+  medicalXml,
+  settingsXml,
+  logoutXml,
+  homeXml,
+  dashboardXml,
+  heartXml,
+  calendarXml,
+  userXml,
+  bloodXml,
+  temperatureXml,
+  lungsXml,
+  aiXml,
+  folderXml,
+  editXml,
+  deleteXml,
+} from '../assets/icons/svgStrings';
+import { useTheme } from '../theme';
 
 /**
  * Iconos con licencia clara: Ionicons y MaterialCommunityIcons vía @expo/vector-icons (MIT).
@@ -18,6 +35,21 @@ import { colors } from '../theme';
 
 const LOCAL_SVG_XML = {
   medicalCrossOutline: medicalCrossOutlineXml,
+  settings: settingsXml,
+  logout: logoutXml,
+  home: homeXml,
+  dashboard: dashboardXml,
+  heart: heartXml,
+  calendar: calendarXml,
+  user: userXml,
+  blood: bloodXml,
+  temperature: temperatureXml,
+  lungs: lungsXml,
+  ai: aiXml,
+  folder: folderXml,
+  edit: editXml,
+  delete: deleteXml,
+  medical: medicalXml,
 };
 
 /** Nombres Ionicons (outline) para tabs y patrones repetidos. */
@@ -29,31 +61,36 @@ export const ICON_PRESETS = {
 };
 
 export default function Icon({
+  name,
   preset,
   ionicon,
   mci,
   svg,
   size = 24,
-  color = colors.primary,
+  color,
   style,
   accessibilityLabel,
   ...rest
 }) {
-  if (svg) {
-    const xml = LOCAL_SVG_XML[svg];
+  const { colors } = useTheme();
+  const tint = color ?? colors.primary;
+  const targetName = name || svg;
+
+  if (targetName) {
+    const xml = LOCAL_SVG_XML[targetName];
     if (!xml) {
       return (
         <Ionicons
           name="help-circle-outline"
           size={size}
-          color={color}
+          color={tint}
           style={style}
           accessibilityLabel={accessibilityLabel}
           {...rest}
         />
       );
     }
-    const tinted = xml.replace(/currentColor/g, color);
+    const tinted = xml.replace(/currentColor/g, tint);
     return (
       <View
         accessible={!!accessibilityLabel}
@@ -71,7 +108,7 @@ export default function Icon({
       <Ionicons
         name={ICON_PRESETS[preset]}
         size={size}
-        color={color}
+        color={tint}
         style={style}
         accessibilityLabel={accessibilityLabel}
         {...rest}
@@ -84,7 +121,7 @@ export default function Icon({
       <MaterialCommunityIcons
         name={mci}
         size={size}
-        color={color}
+        color={tint}
         style={style}
         accessibilityLabel={accessibilityLabel}
         {...rest}
@@ -97,7 +134,7 @@ export default function Icon({
       <Ionicons
         name={ionicon}
         size={size}
-        color={color}
+        color={tint}
         style={style}
         accessibilityLabel={accessibilityLabel}
         {...rest}
@@ -109,7 +146,7 @@ export default function Icon({
     <Ionicons
       name="help-circle-outline"
       size={size}
-      color={color}
+      color={tint}
       style={style}
       accessibilityLabel={accessibilityLabel}
       {...rest}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,56 +7,53 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   Alert,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useHeaderHeight } from '@react-navigation/elements';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES, DEFAULT_MEDICAL_HISTORY } from '../constants/storage';
 import { Header, Card, Button } from '../components';
-import { colors, spacing, typography } from '../theme';
+import { spacing, typography, useTheme } from '../theme';
+import {
+  addMedicalRecord,
+  getMedicalRecordsByUser,
+} from '../services/medicalRecordsService';
 
-/**
- * Registros clínicos de demostración (solo UI; no se persisten).
- * La ficha editable debajo sigue siendo la fuente de verdad en AsyncStorage.
- */
-const SIMULATED_CLINICAL_RECORDS = [
-  {
-    id: '1',
-    date: '5 abr 2026',
-    description:
-      'Consulta de seguimiento — presión arterial 118/76 mmHg, sin alteraciones.',
-  },
-  {
-    id: '2',
-    date: '22 mar 2026',
-    description:
-      'Análisis de laboratorio recibido. Resultados dentro de parámetros normales.',
-  },
-  {
-    id: '3',
-    date: '10 mar 2026',
-    description: 'Vacuna antigripal aplicada. Sin reacciones adversas.',
-  },
-  {
-    id: '4',
-    date: '28 feb 2026',
-    description:
-      'Teleconsulta: revisión de medicación. Se mantiene pauta actual.',
-  },
-];
+function formatRecordDate(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString();
+}
 
 /**
  * Historial médico - Solo rol Paciente
  * Carga y edita el historial del usuario actual. Guarda en AsyncStorage.
  */
 export default function MedicalHistoryScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [medicalRecords, setMedicalRecords] = useState([]);
   const [bloodType, setBloodType] = useState('');
   const [allergies, setAllergies] = useState('');
   const [chronicDiseases, setChronicDiseases] = useState('');
   const [medications, setMedications] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Inputs para registrar nuevas métricas (demo local sin hardware)
+  const [heartRateInput, setHeartRateInput] = useState('');
+  const [temperatureInput, setTemperatureInput] = useState('');
+  const [bpSystolicInput, setBpSystolicInput] = useState('');
+  const [bpDiastolicInput, setBpDiastolicInput] = useState('');
+  const [oxygenInput, setOxygenInput] = useState('');
+
+  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
+  const keyboardVerticalOffset =
+    headerHeight + (Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0);
 
   useEffect(() => {
     loadUserAndHistory();
@@ -82,6 +79,11 @@ export default function MedicalHistoryScreen() {
       setChronicDiseases(h.chronicDiseases || '');
       setMedications(h.medications || '');
       setNotes(h.notes || '');
+
+      if (data?.id) {
+        const records = await getMedicalRecordsByUser(data.id);
+        setMedicalRecords(records);
+      }
     } catch (error) {
       console.error('Error al cargar historial:', error);
     } finally {
@@ -128,40 +130,214 @@ export default function MedicalHistoryScreen() {
     }
   }, [user, bloodType, allergies, chronicDiseases, medications, notes]);
 
+  const handleAddMeasurement = useCallback(async () => {
+    if (!user?.id) return;
+
+    const heartRate = Number(heartRateInput);
+    const temperature = Number(temperatureInput);
+    const systolic = Number(bpSystolicInput);
+    const diastolic = Number(bpDiastolicInput);
+    const oxygen = Number(oxygenInput);
+
+    const ok =
+      Number.isFinite(heartRate) &&
+      Number.isFinite(temperature) &&
+      Number.isFinite(systolic) &&
+      Number.isFinite(diastolic) &&
+      Number.isFinite(oxygen);
+
+    if (!ok) {
+      Alert.alert(
+        'Datos incompletos',
+        'Completa valores numéricos: FC, temperatura, PA (sistólica/diastólica) y SpO₂.'
+      );
+      return;
+    }
+
+    const res = await addMedicalRecord({
+      userId: user.id,
+      date: new Date(),
+      heartRate,
+      temperature,
+      bloodPressure: { systolic, diastolic },
+      oxygen,
+    });
+
+    if (!res.recorded) {
+      Alert.alert('Error', res.error || 'No se pudo guardar el registro.');
+      return;
+    }
+
+    const updated = await getMedicalRecordsByUser(user.id);
+    setMedicalRecords(updated);
+    setHeartRateInput('');
+    setTemperatureInput('');
+    setBpSystolicInput('');
+    setBpDiastolicInput('');
+    setOxygenInput('');
+    Alert.alert('Guardado', 'Nueva medición guardada correctamente.');
+  }, [
+    user,
+    heartRateInput,
+    temperatureInput,
+    bpSystolicInput,
+    bpDiastolicInput,
+    oxygenInput,
+  ]);
+
   const renderRecord = useCallback(({ item }) => {
+    const systolic = item?.bloodPressure?.systolic;
+    const diastolic = item?.bloodPressure?.diastolic;
+    const bpText =
+      typeof systolic === 'number' && typeof diastolic === 'number'
+        ? `${systolic}/${diastolic}`
+        : '—';
+
     return (
       <View style={styles.cardSpacing}>
         <Card style={styles.recordCard}>
           <Text style={styles.recordDate} allowFontScaling>
-            {item.date}
+            {formatRecordDate(item.date)}
           </Text>
           <Text style={styles.recordDescription} allowFontScaling>
-            {item.description}
+            FC: {item.heartRate ?? '—'} bpm
+          </Text>
+          <Text style={styles.recordDescription} allowFontScaling>
+            Temp:{' '}
+            {typeof item.temperature === 'number' ? item.temperature.toFixed(1) : '—'} °C
+          </Text>
+          <Text style={styles.recordDescription} allowFontScaling>
+            Presión: {bpText} mmHg
+          </Text>
+          <Text style={styles.recordDescription} allowFontScaling>
+            SpO₂: {item.oxygen ?? '—'}%
           </Text>
         </Card>
       </View>
     );
-  }, []);
+  }, [styles]);
 
   const listHeader = useCallback(
     () => (
       <View style={styles.listHeader}>
         <Header
-          title="Historial Clínico"
+          title="Historial de métricas"
           style={styles.headerBlock}
           textStyle={styles.headerTitle}
         />
         <Text style={styles.sectionLabel} allowFontScaling>
-          Registros recientes
+          Mediciones guardadas en este dispositivo
         </Text>
       </View>
     ),
-    []
+    [styles]
   );
 
   const listFooter = useCallback(
     () => (
       <View style={styles.footer}>
+        <Text style={styles.sectionLabel} allowFontScaling>
+          Agregar nueva medición
+        </Text>
+
+        <View style={styles.form}>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label} allowFontScaling>
+              Ritmo cardíaco (bpm)
+            </Text>
+            <TextInput
+              style={styles.input}
+              selectionColor={colors.primary}
+              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
+              placeholder="Ej. 82"
+              placeholderTextColor={colors.textPlaceholder}
+              value={heartRateInput}
+              onChangeText={setHeartRateInput}
+              keyboardType="numeric"
+              accessibilityLabel="Campo ritmo cardíaco"
+              allowFontScaling
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label} allowFontScaling>
+              Temperatura (°C)
+            </Text>
+            <TextInput
+              style={styles.input}
+              selectionColor={colors.primary}
+              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
+              placeholder="Ej. 36.6"
+              placeholderTextColor={colors.textPlaceholder}
+              value={temperatureInput}
+              onChangeText={setTemperatureInput}
+              keyboardType="numeric"
+              accessibilityLabel="Campo temperatura"
+              allowFontScaling
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label} allowFontScaling>
+              Presión arterial (PA)
+            </Text>
+            <View style={styles.bpRow}>
+              <TextInput
+                style={[styles.input, styles.bpInput]}
+                selectionColor={colors.primary}
+                {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
+                placeholder="Sistólica"
+                placeholderTextColor={colors.textPlaceholder}
+                value={bpSystolicInput}
+                onChangeText={setBpSystolicInput}
+                keyboardType="numeric"
+                accessibilityLabel="Campo sistólica"
+                allowFontScaling
+              />
+              <Text style={styles.bpSlash} allowFontScaling>
+                /
+              </Text>
+              <TextInput
+                style={[styles.input, styles.bpInput]}
+                selectionColor={colors.primary}
+                {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
+                placeholder="Diastólica"
+                placeholderTextColor={colors.textPlaceholder}
+                value={bpDiastolicInput}
+                onChangeText={setBpDiastolicInput}
+                keyboardType="numeric"
+                accessibilityLabel="Campo diastólica"
+                allowFontScaling
+              />
+            </View>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label} allowFontScaling>
+              Oxígeno (SpO₂ %)
+            </Text>
+            <TextInput
+              style={styles.input}
+              selectionColor={colors.primary}
+              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
+              placeholder="Ej. 98"
+              placeholderTextColor={colors.textPlaceholder}
+              value={oxygenInput}
+              onChangeText={setOxygenInput}
+              keyboardType="numeric"
+              accessibilityLabel="Campo oxígeno"
+              allowFontScaling
+            />
+          </View>
+
+          <Button
+            title="Guardar medición"
+            onPress={handleAddMeasurement}
+            style={styles.saveButton}
+            accessibilityLabel="Guardar nueva medición"
+          />
+        </View>
+
         <Text style={styles.sectionLabel} allowFontScaling>
           Ficha clínica
         </Text>
@@ -182,8 +358,10 @@ export default function MedicalHistoryScreen() {
             </Text>
             <TextInput
               style={styles.input}
+              selectionColor={colors.primary}
+              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
               placeholder="Ej. O+, A-, B+"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.textPlaceholder}
               value={bloodType}
               onChangeText={setBloodType}
               accessibilityLabel="Campo de tipo de sangre"
@@ -196,8 +374,10 @@ export default function MedicalHistoryScreen() {
             </Text>
             <TextInput
               style={[styles.input, styles.inputMultiline]}
+              selectionColor={colors.primary}
+              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
               placeholder="Alergias conocidas"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.textPlaceholder}
               value={allergies}
               onChangeText={setAllergies}
               multiline
@@ -211,8 +391,10 @@ export default function MedicalHistoryScreen() {
             </Text>
             <TextInput
               style={[styles.input, styles.inputMultiline]}
+              selectionColor={colors.primary}
+              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
               placeholder="Enfermedades crónicas"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.textPlaceholder}
               value={chronicDiseases}
               onChangeText={setChronicDiseases}
               multiline
@@ -226,8 +408,10 @@ export default function MedicalHistoryScreen() {
             </Text>
             <TextInput
               style={[styles.input, styles.inputMultiline]}
+              selectionColor={colors.primary}
+              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
               placeholder="Medicamentos que toma actualmente"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.textPlaceholder}
               value={medications}
               onChangeText={setMedications}
               multiline
@@ -241,8 +425,10 @@ export default function MedicalHistoryScreen() {
             </Text>
             <TextInput
               style={[styles.input, styles.inputMultiline]}
+              selectionColor={colors.primary}
+              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
               placeholder="Otras observaciones"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.textPlaceholder}
               value={notes}
               onChangeText={setNotes}
               multiline
@@ -260,12 +446,28 @@ export default function MedicalHistoryScreen() {
         </View>
       </View>
     ),
-    [user, bloodType, allergies, chronicDiseases, medications, notes, handleSave]
+    [
+      user,
+      bloodType,
+      allergies,
+      chronicDiseases,
+      medications,
+      notes,
+      handleSave,
+      heartRateInput,
+      temperatureInput,
+      bpSystolicInput,
+      bpDiastolicInput,
+      oxygenInput,
+      handleAddMeasurement,
+      styles,
+      colors,
+    ]
   );
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <View style={styles.centered}>
           <Text style={styles.loadingText} allowFontScaling>
             Cargando...
@@ -277,7 +479,7 @@ export default function MedicalHistoryScreen() {
 
   if (!user || user.role !== ROLES.PATIENT) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <View style={styles.centered}>
           <Text style={styles.forbiddenText} allowFontScaling>
             Esta pantalla es solo para el rol Paciente.
@@ -288,14 +490,15 @@ export default function MedicalHistoryScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
+    <KeyboardAvoidingView
+      style={styles.keyboardOuter}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={keyboardVerticalOffset}
+      enabled
+    >
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <FlatList
-          data={SIMULATED_CLINICAL_RECORDS}
+          data={medicalRecords}
           keyExtractor={(item) => item.id}
           renderItem={renderRecord}
           ListHeaderComponent={listHeader}
@@ -307,29 +510,44 @@ export default function MedicalHistoryScreen() {
             chronicDiseases,
             medications,
             notes,
+            heartRateInput,
+            temperatureInput,
+            bpSystolicInput,
+            bpDiastolicInput,
+            oxygenInput,
+            medicalRecords,
           }}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            {
+              paddingBottom:
+                spacing.xl + spacing.lg + spacing.md + insets.bottom,
+            },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           initialNumToRender={8}
         />
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors) {
+  return StyleSheet.create({
+  keyboardOuter: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  keyboardView: {
-    flex: 1,
-  },
   listContent: {
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xl + spacing.lg,
   },
   listHeader: {
     marginBottom: spacing.sm,
@@ -428,7 +646,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   input: {
-    fontSize: typography.body.fontSize,
+    fontSize: 16,
+    lineHeight: 22,
     fontWeight: typography.body.fontWeight,
     backgroundColor: colors.surface,
     paddingVertical: spacing.md,
@@ -437,14 +656,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSubtle,
     color: colors.textPrimary,
-    minHeight: spacing.lg * 2,
+    minHeight: Math.max(spacing.lg * 2, spacing.minTouchTarget),
   },
   inputMultiline: {
     minHeight: spacing.xl + spacing.lg,
     textAlignVertical: 'top',
   },
+  bpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  bpInput: {
+    flex: 1,
+    minWidth: 0,
+  },
+  bpSlash: {
+    fontSize: 16,
+    fontWeight: typography.body.fontWeight,
+    color: colors.textSecondary,
+    marginHorizontal: -spacing.sm / 2,
+  },
   saveButton: {
     width: '100%',
     marginTop: spacing.lg,
   },
-});
+  });
+}

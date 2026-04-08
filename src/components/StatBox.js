@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, spacing, typography } from '../theme';
+import { spacing, typography, useTheme } from '../theme';
 
 /**
  * Caja de métrica: valor destacado arriba, etiqueta debajo, contenido centrado.
@@ -10,11 +10,13 @@ import { colors, spacing, typography } from '../theme';
  * @param {import('react-native').StyleProp<import('react-native').ViewStyle>} [style] Estilos adicionales del contenedor.
  */
 export default function StatBox({ value, label, style }) {
+  const { colors, cardShadow } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const displayValue = value === null || value === undefined ? '—' : String(value);
 
   return (
     <View
-      style={[styles.container, style]}
+      style={[styles.container, cardShadow, style]}
       accessible
       accessibilityLabel={`${displayValue}, ${label}`}
     >
@@ -28,28 +30,30 @@ export default function StatBox({ value, label, style }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: colors.secondaryMuted,
-    borderRadius: spacing.radiusCard,
-    padding: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: spacing.xl + spacing.lg + spacing.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  value: {
-    fontSize: typography.title.fontSize,
-    fontWeight: typography.title.fontWeight,
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-    textAlign: 'center',
-  },
-  label: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: typography.caption.fontWeight,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    container: {
+      backgroundColor: colors.surface,
+      borderRadius: spacing.radiusLg,
+      padding: spacing.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: spacing.xl + spacing.lg + spacing.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.borderSubtle,
+    },
+    value: {
+      fontSize: typography.title.fontSize,
+      fontWeight: typography.title.fontWeight,
+      color: colors.textPrimary,
+      marginBottom: spacing.xs,
+      textAlign: 'center',
+    },
+    label: {
+      fontSize: typography.caption.fontSize,
+      fontWeight: typography.caption.fontWeight,
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
+  });
+}

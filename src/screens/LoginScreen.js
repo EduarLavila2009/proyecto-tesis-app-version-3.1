@@ -1,15 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
-  SafeAreaView,
   LayoutAnimation,
   UIManager,
+  StatusBar,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
+import { useHeaderHeight } from '@react-navigation/elements';
+import { spacing, typography, useTheme } from '../theme';
+import {
+  Card,
+  Header,
+  Input,
+  Button,
+  PressableScale,
+  ScreenContainer,
+} from '../components';
+import * as authService from '../services/authService';
 
 if (
   Platform.OS === 'android' &&
@@ -17,15 +27,16 @@ if (
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-import { CommonActions } from '@react-navigation/native';
-import { colors, spacing, typography } from '../theme';
-import { Card, Header, Input, Button, PressableScale } from '../components';
-import * as authService from '../services/authService';
 
 /**
  * Pantalla de inicio de sesión — UI con tema global; toda la lógica en `authService.login`.
  */
 export default function LoginScreen({ navigation }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const headerHeight = useHeaderHeight();
+  const keyboardOffset =
+    headerHeight + (Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
@@ -75,16 +86,12 @@ export default function LoginScreen({ navigation }) {
   const isSubmitDisabled = email.trim() === '' || password === '';
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboard}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+    <ScreenContainer
+      scroll
+      keyboardAvoiding
+      keyboardVerticalOffset={keyboardOffset}
+      contentContainerStyle={styles.scroll}
+    >
           <View style={styles.headerSection}>
             <Header
               title="Iniciar Sesión"
@@ -98,59 +105,39 @@ export default function LoginScreen({ navigation }) {
 
           <View style={styles.cardWrap}>
             <Card style={styles.card}>
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel} allowFontScaling>
-                  Email
-                </Text>
-                <Input
-                  value={email}
-                  onChangeText={(text) => {
-                    setEmail(text);
-                    setLoginError('');
-                    if (errors.email) setErrors({ ...errors, email: null });
-                  }}
-                  placeholder="nombre@correo.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  accessibilityLabel="Campo de correo electrónico"
-                  style={[
-                    styles.input,
-                    errors.email ? styles.inputInvalid : null,
-                  ]}
-                />
-                {errors.email ? (
-                  <Text style={styles.fieldError} allowFontScaling>
-                    {errors.email}
-                  </Text>
-                ) : null}
-              </View>
+              <Input
+                label="Email"
+                containerStyle={styles.fieldBlock}
+                value={email}
+                error={errors.email}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  setLoginError('');
+                  if (errors.email) setErrors({ ...errors, email: null });
+                }}
+                placeholder="nombre@correo.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                accessibilityLabel="Campo de correo electrónico"
+                style={styles.input}
+              />
 
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel} allowFontScaling>
-                  Contraseña
-                </Text>
-                <Input
-                  value={password}
-                  onChangeText={(text) => {
-                    setPassword(text);
-                    setLoginError('');
-                    if (errors.password) setErrors({ ...errors, password: null });
-                  }}
-                  placeholder="Introduce tu contraseña"
-                  secureTextEntry
-                  accessibilityLabel="Campo de contraseña"
-                  style={[
-                    styles.input,
-                    errors.password ? styles.inputInvalid : null,
-                  ]}
-                />
-                {errors.password ? (
-                  <Text style={styles.fieldError} allowFontScaling>
-                    {errors.password}
-                  </Text>
-                ) : null}
-              </View>
+              <Input
+                label="Contraseña"
+                containerStyle={styles.fieldBlock}
+                value={password}
+                error={errors.password}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  setLoginError('');
+                  if (errors.password) setErrors({ ...errors, password: null });
+                }}
+                placeholder="Introduce tu contraseña"
+                secureTextEntry
+                accessibilityLabel="Campo de contraseña"
+                style={styles.input}
+              />
 
               {loginError ? (
                 <Text
@@ -185,23 +172,15 @@ export default function LoginScreen({ navigation }) {
               </Text>
             </Text>
           </PressableScale>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
 const MAX_FORM_WIDTH = spacing.md * 26;
 const HEADER_TITLE_SIZE = typography.title.fontSize + 6;
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  keyboard: {
-    flex: 1,
-  },
+function createStyles(colors) {
+  return StyleSheet.create({
   scroll: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
@@ -245,28 +224,9 @@ const styles = StyleSheet.create({
   fieldBlock: {
     marginBottom: spacing.lg,
   },
-  fieldLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
   input: {
     width: '100%',
     minHeight: spacing.xl + spacing.md,
-  },
-  inputInvalid: {
-    borderColor: colors.danger,
-    borderWidth: 2,
-  },
-  fieldError: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: typography.caption.fontWeight,
-    color: colors.danger,
-    marginTop: spacing.sm,
-    marginLeft: spacing.xs,
   },
   loginErrorText: {
     fontSize: typography.body.fontSize,
@@ -296,4 +256,5 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
-});
+  });
+}

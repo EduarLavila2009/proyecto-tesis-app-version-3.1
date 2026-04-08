@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
-  SafeAreaView,
   LayoutAnimation,
   UIManager,
+  useWindowDimensions,
+  StatusBar,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useHeaderHeight } from '@react-navigation/elements';
+import { STORAGE_KEYS, ROLES, DEFAULT_MEDICAL_HISTORY } from '../constants/storage';
+import { Card, Input, Button, PressableScale, ScreenContainer } from '../components';
+import { spacing, typography, useTheme } from '../theme';
 
 if (
   Platform.OS === 'android' &&
@@ -18,35 +22,31 @@ if (
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-import { CommonActions } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS, ROLES, DEFAULT_MEDICAL_HISTORY } from '../constants/storage';
-import colors from '../constants/colors';
-import spacing from '../constants/spacing';
-import { fontSizes } from '../constants/typography';
-import { buttons } from '../constants/theme';
-import { PressableScale } from '../components';
 
 const isValidEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 };
 
-/**
- * Genera el siguiente ID único según rol: PAC-0001, PAC-0002, MED-0001, etc.
- * @param {Array} users - Array actual de usuarios
- * @param {string} role - ROLES.PATIENT o ROLES.DOCTOR
- * @returns {string}
- */
 const generateUserId = (users, role) => {
   const prefix = role === ROLES.DOCTOR ? 'MED' : 'PAC';
   const samePrefix = (users || []).filter((u) => u.id && u.id.startsWith(prefix));
-  const numbers = samePrefix.map((u) => parseInt(u.id.replace(prefix, ''), 10)).filter((n) => !Number.isNaN(n));
+  const numbers = samePrefix
+    .map((u) => parseInt(u.id.replace(prefix, ''), 10))
+    .filter((n) => !Number.isNaN(n));
   const nextNum = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
   return `${prefix}-${String(nextNum).padStart(4, '0')}`;
 };
 
 export default function RegisterScreen({ navigation }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const headerHeight = useHeaderHeight();
+  const keyboardOffset =
+    headerHeight + (Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0);
+  const { width } = useWindowDimensions();
+  const formMaxW = Math.min(440, width - spacing.lg * 2);
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -73,7 +73,6 @@ export default function RegisterScreen({ navigation }) {
       const role = await AsyncStorage.getItem(STORAGE_KEYS.ROLE);
       const roleKey = (role || ROLES.PATIENT).toLowerCase();
 
-      // Obtener array de usuarios (o vacío si es el primero)
       let users = [];
       const usersJson = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
       if (usersJson) {
@@ -92,6 +91,8 @@ export default function RegisterScreen({ navigation }) {
         email: email.trim().toLowerCase(),
         password,
         role: roleKey,
+        phone: '',
+        avatar: '',
         medicalHistory: { ...DEFAULT_MEDICAL_HISTORY },
       };
 
@@ -111,222 +112,163 @@ export default function RegisterScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.header}>
+    <ScreenContainer
+      scroll
+      keyboardAvoiding
+      keyboardVerticalOffset={keyboardOffset}
+      contentContainerStyle={styles.scrollContent}
+    >
+          <View style={[styles.header, { maxWidth: formMaxW, alignSelf: 'center', width: '100%' }]}>
             <Text style={styles.title} allowFontScaling>
-              Registro
+              Crear cuenta
             </Text>
             <Text style={styles.subtitle} allowFontScaling>
-              Crear cuenta en MEDICAL corp
+              Completa tus datos para unirte a MEDICAL corp
             </Text>
           </View>
 
-          <View style={styles.form}>
-            <View style={styles.fieldGroup}>
-              <TextInput
-                style={[styles.input, errors.name && styles.inputError]}
-                placeholder="Nombre completo"
-                placeholderTextColor={colors.textMuted}
+          <View style={{ width: '100%', maxWidth: formMaxW, alignSelf: 'center' }}>
+            <Card style={styles.card}>
+              <Input
+                label="Nombre completo"
+                containerStyle={styles.fieldGroup}
                 value={name}
+                error={errors.name}
                 onChangeText={(text) => {
                   setName(text);
                   if (errors.name) setErrors({ ...errors, name: null });
                 }}
+                placeholder="Tu nombre"
                 accessibilityLabel="Campo de nombre completo"
-                allowFontScaling
+                style={styles.input}
               />
-              {errors.name && (
-                <Text style={styles.errorText} allowFontScaling>
-                  {errors.name}
-                </Text>
-              )}
-            </View>
 
-            <View style={styles.fieldGroup}>
-              <TextInput
-                style={[styles.input, errors.email && styles.inputError, { color: '#FFFFFF' }]}
-                placeholder="Correo electrónico"
-                placeholderTextColor={colors.textMuted}
+              <Input
+                label="Correo electrónico"
+                containerStyle={styles.fieldGroup}
                 value={email}
+                error={errors.email}
                 onChangeText={(text) => {
                   setEmail(text);
                   if (errors.email) setErrors({ ...errors, email: null });
                 }}
+                placeholder="nombre@correo.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
-                selectionColor={colors.primary}
-                cursorColor={colors.primary}
                 accessibilityLabel="Campo de correo electrónico"
-                allowFontScaling
+                style={styles.input}
               />
-              {errors.email && (
-                <Text style={styles.errorText} allowFontScaling>
-                  {errors.email}
-                </Text>
-              )}
-            </View>
 
-            <View style={styles.fieldGroup}>
-              <TextInput
-                style={[styles.input, errors.password && styles.inputError]}
-                placeholder="Contraseña"
-                placeholderTextColor={colors.textMuted}
+              <Input
+                label="Contraseña"
+                containerStyle={styles.fieldGroup}
                 value={password}
+                error={errors.password}
                 onChangeText={(text) => {
                   setPassword(text);
                   if (errors.password) setErrors({ ...errors, password: null });
                 }}
+                placeholder="Mínimo 6 caracteres"
                 secureTextEntry
                 accessibilityLabel="Campo de contraseña"
-                allowFontScaling
+                style={styles.input}
               />
-              {errors.password && (
-                <Text style={styles.errorText} allowFontScaling>
-                  {errors.password}
-                </Text>
-              )}
-            </View>
 
-            <View style={styles.fieldGroup}>
-              <TextInput
-                style={[styles.input, errors.confirmPassword && styles.inputError]}
-                placeholder="Confirmar contraseña"
-                placeholderTextColor={colors.textMuted}
+              <Input
+                label="Confirmar contraseña"
+                containerStyle={styles.fieldGroup}
                 value={confirmPassword}
+                error={errors.confirmPassword}
                 onChangeText={(text) => {
                   setConfirmPassword(text);
                   if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: null });
                 }}
+                placeholder="Repite la contraseña"
                 secureTextEntry
                 accessibilityLabel="Campo de confirmar contraseña"
-                allowFontScaling
+                style={styles.input}
               />
-              {errors.confirmPassword && (
-                <Text style={styles.errorText} allowFontScaling>
-                  {errors.confirmPassword}
+
+              <Button
+                title="Registrarse"
+                onPress={handleRegister}
+                style={styles.primaryButton}
+                accessibilityLabel="Registrarse, crear cuenta"
+              />
+
+              <PressableScale
+                style={styles.secondaryWrap}
+                onPress={() => navigation.goBack()}
+                accessibilityRole="button"
+                accessibilityLabel="Volver al inicio de sesión"
+              >
+                <Text style={styles.secondaryText} allowFontScaling>
+                  ¿Ya tienes cuenta?{' '}
+                  <Text style={styles.secondaryAccent} allowFontScaling>
+                    Inicia sesión
+                  </Text>
                 </Text>
-              )}
-            </View>
-
-            <PressableScale
-              style={[buttons.primary, styles.primaryButton]}
-              onPress={handleRegister}
-              accessibilityRole="button"
-              accessibilityLabel="Registrarse, crear cuenta"
-            >
-              <Text style={buttons.primaryText} allowFontScaling>
-                Registrarse
-              </Text>
-            </PressableScale>
-
-            <PressableScale
-              style={styles.secondaryButton}
-              onPress={() => navigation.goBack()}
-              accessibilityRole="button"
-              accessibilityLabel="Volver al inicio de sesión"
-            >
-              <Text style={styles.secondaryButtonText} allowFontScaling>
-                ¿Ya tienes cuenta? Inicia sesión
-              </Text>
-            </PressableScale>
+              </PressableScale>
+            </Card>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  keyboardView: {
-    flex: 1,
-  },
   scrollContent: {
     flexGrow: 1,
-    padding: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.screen,
     justifyContent: 'center',
   },
   header: {
-    marginBottom: spacing.xxxl,
+    marginBottom: spacing.xl,
   },
   title: {
-    fontSize: fontSizes.display,
+    fontSize: typography.title.fontSize + 2,
     fontWeight: '700',
-    color: colors.textLight,
+    color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.sm,
-    letterSpacing: 0.3,
+    letterSpacing: -0.3,
   },
   subtitle: {
-    fontSize: fontSizes.base - 1,
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
     color: colors.textSecondary,
     textAlign: 'center',
-    letterSpacing: 0.5,
+    lineHeight: typography.body.fontSize * 1.45,
   },
-  form: {
-    gap: 0,
+  card: {
+    padding: spacing.lg + spacing.xs,
+    borderRadius: spacing.radiusLg,
   },
   fieldGroup: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   input: {
-    backgroundColor: colors.card,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    borderRadius: spacing.radiusMd,
-    fontSize: fontSizes.base,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    color: colors.text,
-    minHeight: 52,
-  },
-  inputError: {
-    borderColor: colors.error,
-    borderWidth: 1.5,
-  },
-  errorText: {
-    color: colors.error,
-    fontSize: fontSizes.xs,
-    marginTop: spacing.xs,
-    marginLeft: spacing.xs,
+    width: '100%',
   },
   primaryButton: {
-    marginTop: spacing.xxl,
-    borderRadius: spacing.radiusMd,
-    shadowColor: colors.black,
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  secondaryButton: {
     marginTop: spacing.md,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xxl,
-    borderRadius: spacing.radiusMd,
+    minHeight: spacing.lg * 2 + spacing.xs,
+  },
+  secondaryWrap: {
+    marginTop: spacing.lg,
+    paddingVertical: spacing.md,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.borderLight,
   },
-  secondaryButtonText: {
-    color: colors.textLight,
-    fontSize: fontSizes.base,
-    fontWeight: '500',
+  secondaryText: {
+    fontSize: typography.body.fontSize,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
-});
+  secondaryAccent: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  });
+}

@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, Alert } from 'react-native';
 import { CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
 import { MENU_ITEMS } from '../constants/menuConfig';
-import colors from '../constants/colors';
 import spacing from '../constants/spacing';
+import { useTheme } from '../theme';
 import { fontSizes } from '../constants/typography';
 import { ICON_SIZES } from '../constants/icons';
 import { PressableScale } from '../components';
@@ -17,6 +17,8 @@ import { PressableScale } from '../components';
  * Médico: Perfil, Pacientes, Funciones del robot
  */
 export default function MainMenuScreen({ navigation }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [user, setUser] = useState(null);
   const [roleKey, setRoleKey] = useState('');
 
@@ -124,7 +126,7 @@ export default function MainMenuScreen({ navigation }) {
                   </Text>
                 )}
               </View>
-              <Ionicons name="chevron-forward" size={ICON_SIZES.action} color={colors.textMuted} />
+              <Ionicons name="chevron-forward" size={ICON_SIZES.action} color={colors.textSecondary} />
             </PressableScale>
           ))}
         </View>
@@ -136,7 +138,7 @@ export default function MainMenuScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Cerrar sesión"
           >
-            <Ionicons name="log-out-outline" size={ICON_SIZES.action} color={colors.critical} />
+            <Ionicons name="log-out-outline" size={ICON_SIZES.action} color={colors.danger} />
             <Text style={styles.logoutText} allowFontScaling>
               Cerrar sesión
             </Text>
@@ -147,7 +149,8 @@ export default function MainMenuScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -168,7 +171,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: fontSizes.display,
     fontWeight: '700',
-    color: colors.textLight,
+    color: colors.textPrimary,
     marginBottom: spacing.md,
   },
   roleBadge: {
@@ -181,18 +184,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   roleBadgeDoctor: {
-    backgroundColor: colors.primaryDark,
+    backgroundColor: colors.primaryPressed,
     borderWidth: 1,
-    borderColor: colors.primaryLight,
+    borderColor: colors.borderFocus,
   },
   roleText: {
-    color: colors.white,
+    color: colors.onPrimary,
     fontSize: fontSizes.sm,
     fontWeight: '600',
   },
   sectionDivider: {
     height: 1,
-    backgroundColor: colors.border,
+    backgroundColor: colors.borderSubtle,
     opacity: 0.5,
     marginBottom: spacing.xxl,
   },
@@ -200,15 +203,15 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.surface,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
     borderRadius: spacing.radiusLg,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    shadowColor: colors.black,
+    borderColor: colors.borderSubtle,
+    shadowColor: colors.shadow,
     shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 8,
@@ -218,7 +221,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: spacing.radiusMd,
-    backgroundColor: colors.cardIconBg,
+    backgroundColor: colors.secondaryMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.lg,
@@ -229,11 +232,11 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: fontSizes.lg,
     fontWeight: '600',
-    color: colors.text,
+    color: colors.textPrimary,
   },
   cardBadge: {
     fontSize: fontSizes.sm,
-    color: colors.textMuted,
+    color: colors.textSecondary,
     marginTop: spacing.xs,
     fontStyle: 'italic',
   },
@@ -241,7 +244,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xxl,
     paddingTop: spacing.xxl,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: colors.borderSubtle,
     opacity: 0.6,
   },
   logoutButton: {
@@ -252,12 +255,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     borderRadius: spacing.radiusMd,
     borderWidth: 1,
-    borderColor: colors.critical,
+    borderColor: colors.danger,
     gap: spacing.sm,
   },
   logoutText: {
-    color: colors.critical,
+    color: colors.danger,
     fontSize: fontSizes.base,
     fontWeight: '600',
   },
-});
+  });
+}

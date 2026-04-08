@@ -1,25 +1,23 @@
-import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
-import colors from '../constants/colors';
-import spacing from '../constants/spacing';
-import { fontSizes } from '../constants/typography';
-import { ICON_SIZES } from '../constants/icons';
-import { PressableScale } from '../components';
+import { PressableScale, Card, ScreenContainer } from '../components';
+import { spacing, typography, useTheme } from '../theme';
+
+const ICON_SIZE = 28;
 
 /**
- * Pantalla de selección de rol - SIEMPRE la primera del flujo de autenticación.
- * El usuario elige Paciente o Médico, se guarda en AsyncStorage y navega a Login.
- * Usa navigate (no replace) para que Login mantenga RoleSelection en el stack
- * y muestre la flecha ← para volver a cambiar de rol.
+ * Primera pantalla del flujo: elegir rol y continuar a Login.
  */
 export default function RoleSelectionScreen({ navigation }) {
+  const { width } = useWindowDimensions();
+  const maxCardW = Math.min(420, width - spacing.lg * 2);
+
   const handleRoleSelect = async (role) => {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.ROLE, role);
-      // navigate (no replace): mantiene RoleSelection en el stack para que Login muestre flecha ←
       navigation.navigate('Login');
     } catch (error) {
       console.error('Error al guardar rol:', error);
@@ -27,127 +25,144 @@ export default function RoleSelectionScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+    <ScreenContainer scroll contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={styles.brand} allowFontScaling>
             MEDICAL corp
           </Text>
           <Text style={styles.title} allowFontScaling>
-            ¿Qué modo deseas usar?
+            ¿Cómo vas a usar la app?
           </Text>
           <Text style={styles.subtitle} allowFontScaling>
-            Selecciona el perfil con el que vas a acceder a la aplicación.
+            Elige tu perfil para personalizar la experiencia.
           </Text>
         </View>
 
-        <View style={styles.cardsContainer}>
+        <View style={[styles.cardsColumn, { maxWidth: maxCardW, alignSelf: 'center', width: '100%' }]}>
           <PressableScale
-            style={styles.card}
+            containerStyle={styles.pressableFull}
             onPress={() => handleRoleSelect(ROLES.PATIENT)}
             accessibilityRole="button"
             accessibilityLabel="Modo paciente. Accede a tu información médica y asistencia"
           >
-            <View style={styles.cardIconWrapper}>
-              <Ionicons name="person-circle-outline" size={ICON_SIZES.roleCard} color={colors.primary} />
-            </View>
-            <Text style={styles.cardTitle} allowFontScaling>
-              PACIENTE
-            </Text>
-            <Text style={styles.cardDescription} allowFontScaling>
-              Accede a tu información médica y asistencia
-            </Text>
+            <Card style={styles.roleCard}>
+              <View style={styles.cardRow}>
+                <View style={styles.iconWrap}>
+                  <Ionicons name="person-circle-outline" size={ICON_SIZE} color={colors.primary} />
+                </View>
+                <View style={styles.cardTextBlock}>
+                  <Text style={styles.cardTitle} allowFontScaling>
+                    Paciente
+                  </Text>
+                  <Text style={styles.cardDescription} allowFontScaling>
+                    Consulta tu información médica, métricas y asistencia con IA.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              </View>
+            </Card>
           </PressableScale>
 
           <PressableScale
-            style={styles.card}
+            containerStyle={styles.pressableFull}
             onPress={() => handleRoleSelect(ROLES.DOCTOR)}
             accessibilityRole="button"
             accessibilityLabel="Modo médico. Gestiona pacientes y funciones del robot"
           >
-            <View style={styles.cardIconWrapper}>
-              <Ionicons name="medkit-outline" size={ICON_SIZES.roleCard} color={colors.primary} />
-            </View>
-            <Text style={styles.cardTitle} allowFontScaling>
-              MÉDICO
-            </Text>
-            <Text style={styles.cardDescription} allowFontScaling>
-              Gestiona pacientes y funciones del robot
-            </Text>
+            <Card style={styles.roleCard}>
+              <View style={styles.cardRow}>
+                <View style={styles.iconWrap}>
+                  <Ionicons name="medkit-outline" size={ICON_SIZE} color={colors.secondary} />
+                </View>
+                <View style={styles.cardTextBlock}>
+                  <Text style={styles.cardTitle} allowFontScaling>
+                    Médico
+                  </Text>
+                  <Text style={styles.cardDescription} allowFontScaling>
+                    Accede a pacientes, panel clínico y herramientas de apoyo.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              </View>
+            </Card>
           </PressableScale>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+function createStyles(colors) {
+  return StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
-    padding: spacing.xxl,
-    paddingTop: spacing.section,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xl + spacing.lg,
   },
   header: {
-    marginBottom: spacing.section,
+    marginBottom: spacing.xl + spacing.sm,
   },
   brand: {
-    fontSize: fontSizes.sm,
-    fontWeight: '600',
+    fontSize: typography.caption.fontSize,
+    fontWeight: '700',
     color: colors.primary,
-    letterSpacing: 1.5,
-    marginBottom: spacing.xxl,
+    letterSpacing: 2,
+    marginBottom: spacing.lg,
   },
   title: {
-    fontSize: fontSizes.display,
+    fontSize: typography.title.fontSize + 4,
     fontWeight: '700',
-    color: colors.textLight,
-    lineHeight: 36,
-    marginBottom: spacing.md,
-  },
-  subtitle: {
-    fontSize: fontSizes.base - 1,
-    color: colors.textSecondary,
-    lineHeight: 22,
-  },
-  cardsContainer: {
-    gap: spacing.lg,
-  },
-  card: {
-    backgroundColor: colors.card,
-    padding: spacing.xxl,
-    borderRadius: spacing.radiusLg,
-    shadowColor: colors.black,
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  cardIconWrapper: {
-    width: 52,
-    height: 52,
-    borderRadius: spacing.radiusMd,
-    backgroundColor: colors.cardIconBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xl,
-  },
-  cardTitle: {
-    fontSize: fontSizes.lg,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: 0.5,
+    color: colors.textPrimary,
+    letterSpacing: -0.5,
     marginBottom: spacing.sm,
   },
-  cardDescription: {
-    fontSize: fontSizes.base - 1,
+  subtitle: {
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
     color: colors.textSecondary,
-    lineHeight: 22,
+    lineHeight: typography.body.fontSize * 1.45,
   },
-});
+  pressableFull: {
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  cardsColumn: {
+    gap: spacing.md,
+  },
+  roleCard: {
+    padding: spacing.md + 2,
+    borderRadius: spacing.radiusLg,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: spacing.radiusButton,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  cardTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  cardTitle: {
+    fontSize: typography.subtitle.fontSize,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  cardDescription: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: typography.caption.fontWeight,
+    color: colors.textSecondary,
+    lineHeight: typography.caption.fontSize * 1.45,
+  },
+  });
+}

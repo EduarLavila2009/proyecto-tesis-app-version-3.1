@@ -158,6 +158,8 @@ export async function register(userData) {
       email: userData.email.trim().toLowerCase(),
       password: userData.password,
       role: roleKey,
+      phone: typeof userData.phone === 'string' ? userData.phone.trim() : '',
+      avatar: typeof userData.avatar === 'string' ? userData.avatar : '',
       medicalHistory: {
         ...DEFAULT_MEDICAL_HISTORY,
         ...(userData.medicalHistory || {}),

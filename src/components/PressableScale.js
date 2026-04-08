@@ -15,7 +15,7 @@ export default function PressableScale({
   onPress,
   onPressIn,
   onPressOut,
-  activeOpacity = 0.8,
+  activeOpacity = 0.72,
   hitSlop = hitSlopComfortable,
   ...rest
 }) {

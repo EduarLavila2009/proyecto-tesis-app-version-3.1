@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, spacing, typography } from '../theme';
+import { spacing, typography, useTheme } from '../theme';
 
 /**
  * Título de sección reutilizable, centrado horizontalmente.
@@ -10,6 +10,9 @@ import { colors, spacing, typography } from '../theme';
  * @param {import('react-native').StyleProp<import('react-native').TextStyle>} [textStyle] Estilo del texto del título (opcional).
  */
 export default function Header({ title, style, textStyle }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={[styles.container, style]}>
       <Text
@@ -23,16 +26,18 @@ export default function Header({ title, style, textStyle }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  title: {
-    fontSize: typography.title.fontSize,
-    fontWeight: typography.title.fontWeight,
-    color: colors.primary,
-    textAlign: 'center',
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    container: {
+      width: '100%',
+      alignItems: 'center',
+      paddingVertical: spacing.sm,
+    },
+    title: {
+      fontSize: typography.title.fontSize,
+      fontWeight: typography.title.fontWeight,
+      color: colors.primary,
+      textAlign: 'center',
+    },
+  });
+}

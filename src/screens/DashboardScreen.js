@@ -1,19 +1,19 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   Alert,
   Animated,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/storage';
-import { Card, Header, Button, StatBox } from '../components';
-import { colors, spacing, typography } from '../theme';
+import { Card, Header, Button, StatBox, MedicalAlertBanner } from '../components';
+import { spacing, typography, useTheme } from '../theme';
 import {
   evaluateMonitoringAlert,
   isAlertStatus,
@@ -23,6 +23,8 @@ import {
   SIM_SPO2,
   SIM_TEMP_C,
 } from '../utils/vitalsMonitoring';
+import { recordMedicalAlert } from '../services/alertsService';
+import { getLatestMedicalRecord } from '../services/medicalRecordsService';
 
 const RECENT_RECORDS = [
   { id: '1', time: 'Hoy 08:42', detail: 'Medición automática — FC estable, sin eventos.' },
@@ -33,8 +35,19 @@ const RECENT_RECORDS = [
 const METRICS_ANIM_MS = 520;
 
 export default function DashboardScreen({ navigation }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const [patientName, setPatientName] = useState('Paciente');
+  const [userId, setUserId] = useState(null);
+  const [vitals, setVitals] = useState({
+    heartRate: SIM_HEART_RATE_BPM,
+    temperature: SIM_TEMP_C,
+    systolic: SIM_BP_SYSTOLIC,
+    diastolic: SIM_BP_DIASTOLIC,
+    oxygen: SIM_SPO2,
+  });
   const metricsOpacity = useRef(new Animated.Value(0)).current;
   const metricsTranslate = useRef(new Animated.Value(10)).current;
 
@@ -70,6 +83,19 @@ export default function DashboardScreen({ navigation }) {
           if (cancelled || !raw) return;
           const u = JSON.parse(raw);
           if (u?.name) setPatientName(u.name);
+          if (u?.id) {
+            setUserId(String(u.id));
+            const latest = await getLatestMedicalRecord(String(u.id));
+            if (latest?.bloodPressure) {
+              setVitals({
+                heartRate: latest.heartRate,
+                temperature: latest.temperature,
+                systolic: latest.bloodPressure.systolic,
+                diastolic: latest.bloodPressure.diastolic,
+                oxygen: latest.oxygen,
+              });
+            }
+          }
         } catch (_) {
           /* mantener nombre por defecto */
         }
@@ -81,26 +107,56 @@ export default function DashboardScreen({ navigation }) {
   );
 
   const status = evaluateMonitoringAlert(
-    SIM_HEART_RATE_BPM,
-    SIM_BP_SYSTOLIC,
-    SIM_BP_DIASTOLIC
+    vitals.heartRate,
+    vitals.systolic,
+    vitals.diastolic,
+    vitals.oxygen
   );
   const isAlert = isAlertStatus(status.level);
   const statusWord = isAlert ? 'Alerta' : 'Normal';
   const statusColor = isAlert ? colors.danger : colors.secondary;
 
-  const bpLabel = `${SIM_BP_SYSTOLIC}/${SIM_BP_DIASTOLIC}`;
+  const bpLabel = `${vitals.systolic}/${vitals.diastolic}`;
 
   const gridGutter = Math.min(spacing.md, Math.max(spacing.sm, windowWidth * 0.02));
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!isAlert) return;
+      recordMedicalAlert({
+        level: status.level,
+        title: status.title,
+        subtitle: status.subtitle,
+        reasons: status.reasons,
+        vitals: {
+          heartRate: vitals.heartRate,
+          systolic: vitals.systolic,
+          diastolic: vitals.diastolic,
+          spo2: vitals.oxygen,
+        },
+      }).catch(() => {});
+    }, [isAlert, status.level, status.title, status.subtitle, status.reasons, vitals])
+  );
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: spacing.xl + spacing.lg + spacing.md + insets.bottom },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.hero}>
+        {isAlert ? (
+          <MedicalAlertBanner
+            title="Alerta médica"
+            subtitle={status.subtitle}
+            onPress={() => navigation.navigate('Alerts')}
+          />
+        ) : null}
+
+        <Card style={styles.heroCard}>
           <Header
             title={`Hola, ${patientName}`}
             style={styles.headerWrap}
@@ -129,7 +185,7 @@ export default function DashboardScreen({ navigation }) {
           <Text style={styles.hint} allowFontScaling>
             {status.subtitle}
           </Text>
-        </View>
+        </Card>
 
         <Text style={styles.sectionHeading} allowFontScaling>
           Métricas vitales
@@ -146,12 +202,12 @@ export default function DashboardScreen({ navigation }) {
         >
           <View style={[styles.metricsRow, { marginHorizontal: -gridGutter / 2 }]}>
             <StatBox
-              value={SIM_HEART_RATE_BPM}
+              value={vitals.heartRate}
               label="FC (bpm)"
               style={[styles.statCell, { marginHorizontal: gridGutter / 2 }]}
             />
             <StatBox
-              value={`${SIM_TEMP_C.toFixed(1)} °C`}
+              value={`${vitals.temperature.toFixed(1)} °C`}
               label="Temperatura"
               style={[styles.statCell, { marginHorizontal: gridGutter / 2 }]}
             />
@@ -163,7 +219,7 @@ export default function DashboardScreen({ navigation }) {
               style={[styles.statCell, { marginHorizontal: gridGutter / 2 }]}
             />
             <StatBox
-              value={`${SIM_SPO2}%`}
+              value={`${vitals.oxygen}%`}
               label="Oxígeno (SpO₂)"
               style={[styles.statCell, { marginHorizontal: gridGutter / 2 }]}
             />
@@ -220,18 +276,21 @@ export default function DashboardScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors) {
+  return StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.background,
   },
   scroll: {
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xl + spacing.lg,
   },
-  hero: {
+  heroCard: {
     marginBottom: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: spacing.radiusLg,
   },
   sectionHeading: {
     fontSize: typography.caption.fontSize,
@@ -350,4 +409,5 @@ const styles = StyleSheet.create({
     minHeight: spacing.xl + spacing.md,
     marginBottom: 0,
   },
-});
+  });
+}

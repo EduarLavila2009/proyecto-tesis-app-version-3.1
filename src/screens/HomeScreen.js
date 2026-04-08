@@ -1,18 +1,11 @@
-import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  Alert,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
-import { Card, Header, Button, StatBox } from '../components';
-import { colors, spacing, typography } from '../theme';
+import { Card, Header, PressableScale, Icon, MedicalAlertBanner } from '../components';
+import { spacing, typography, useTheme } from '../theme';
 import {
   evaluateMonitoringAlert,
   isAlertStatus,
@@ -22,6 +15,8 @@ import {
   SIM_SPO2,
   SIM_TEMP_C,
 } from '../utils/vitalsMonitoring';
+import { recordMedicalAlert } from '../services/alertsService';
+import { getLatestMedicalRecord } from '../services/medicalRecordsService';
 
 /** Misma entrada demo que la primera fila del historial clínico simulado (solo UI). */
 const DEMO_LAST_CLINICAL_EVENT = {
@@ -30,38 +25,32 @@ const DEMO_LAST_CLINICAL_EVENT = {
     'Consulta de seguimiento — presión arterial 118/76 mmHg, sin alteraciones.',
 };
 
-const ACTION_ICON_SIZE = spacing.lg + spacing.xs;
-
-const QUICK_ACTIONS = [
-  {
-    id: 'history',
-    title: 'Ver Historial',
-    icon: 'document-text-outline',
-    nav: 'History',
-  },
-  {
-    id: 'contact',
-    title: 'Contactar Médico',
-    icon: 'chatbubbles-outline',
-    nav: null,
-  },
-  {
-    id: 'measure',
-    title: 'Nueva Medición',
-    icon: 'pulse-outline',
-    nav: 'Dashboard',
-  },
-];
-
 function statusDisplayWord(level) {
   if (level === 'stable') return 'Normal';
   if (level === 'warning') return 'Atención';
   return 'Crítico';
 }
 
+function statusSubtitle(level) {
+  if (level === 'stable') return 'Sin alertas detectadas';
+  if (level === 'warning') return 'Algunos valores elevados';
+  return 'Valores fuera del rango recomendado';
+}
+
 export default function HomeScreen({ navigation }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const [roleKey, setRoleKey] = useState(ROLES.PATIENT);
   const [userName, setUserName] = useState('');
+  const [userId, setUserId] = useState(null);
+  const [vitals, setVitals] = useState({
+    heartRate: SIM_HEART_RATE_BPM,
+    temperature: SIM_TEMP_C,
+    systolic: SIM_BP_SYSTOLIC,
+    diastolic: SIM_BP_DIASTOLIC,
+    oxygen: SIM_SPO2,
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -77,6 +66,21 @@ export default function HomeScreen({ navigation }) {
             try {
               const u = JSON.parse(userRaw);
               if (u?.name) setUserName(String(u.name));
+              if (u?.id) setUserId(String(u.id));
+
+              // Cargar última medición guardada (si existe)
+              if (u?.id) {
+                const latest = await getLatestMedicalRecord(String(u.id));
+                if (!cancelled && latest?.bloodPressure) {
+                  setVitals({
+                    heartRate: latest.heartRate,
+                    temperature: latest.temperature,
+                    systolic: latest.bloodPressure.systolic,
+                    diastolic: latest.bloodPressure.diastolic,
+                    oxygen: latest.oxygen,
+                  });
+                }
+              }
             } catch (_) {
               /* ignorar */
             }
@@ -91,11 +95,12 @@ export default function HomeScreen({ navigation }) {
     }, [])
   );
 
-  const displayName = userName.trim() || 'Usuario';
+  const displayName = userName.trim() || 'Eduar';
   const status = evaluateMonitoringAlert(
-    SIM_HEART_RATE_BPM,
-    SIM_BP_SYSTOLIC,
-    SIM_BP_DIASTOLIC
+    vitals.heartRate,
+    vitals.systolic,
+    vitals.diastolic,
+    vitals.oxygen
   );
   const alertActive = isAlertStatus(status.level);
   const statusColor = alertActive ? colors.danger : colors.secondary;
@@ -103,117 +108,206 @@ export default function HomeScreen({ navigation }) {
 
   const insightText =
     status.level === 'stable'
-      ? 'Tu estado se mantiene estable. Sigue con tu rutina de medicación y controles programados.'
+      ? 'Tu estado se mantiene estable. Mantén hidratación y controles programados.'
       : status.subtitle;
 
   const historyTarget = roleKey === ROLES.DOCTOR ? 'Patients' : 'History';
 
-  const handleQuickAction = (item) => {
-    if (item.id === 'contact') {
-      Alert.alert(
-        'Contactar médico',
-        'Canal de contacto con su equipo médico (simulado). En producción podría abrir teléfono, chat o cita.',
-        [{ text: 'Entendido' }]
-      );
-      return;
-    }
-    if (item.nav) {
-      navigation.navigate(item.nav === 'History' ? historyTarget : item.nav);
-    }
-  };
+  const bpLabel = `${vitals.systolic}/${vitals.diastolic}`;
 
-  const bpLabel = `${SIM_BP_SYSTOLIC}/${SIM_BP_DIASTOLIC}`;
+  const statusBg = alertActive ? `${colors.danger}14` : colors.secondaryMuted;
+  const statusIconName = alertActive ? 'medical' : 'heart';
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!alertActive) return;
+      recordMedicalAlert({
+        level: status.level,
+        title: status.title,
+        subtitle: status.subtitle,
+        reasons: status.reasons,
+        vitals: {
+          heartRate: vitals.heartRate,
+          systolic: vitals.systolic,
+          diastolic: vitals.diastolic,
+          spo2: vitals.oxygen,
+        },
+      }).catch(() => {});
+    }, [alertActive, status.level, status.title, status.subtitle, status.reasons, vitals])
+  );
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: spacing.xl + spacing.lg + spacing.md + insets.bottom },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.hero}>
-          <Header
-            title={`Hola, ${displayName}`}
-            style={styles.headerWrap}
-            textStyle={styles.greeting}
+        {/* 1) Header superior */}
+        <View style={styles.topHeader}>
+          <View style={styles.topHeaderText}>
+            <Text style={styles.hello} allowFontScaling>
+              Hola, {displayName} 👋
+            </Text>
+            <Text style={styles.subHello} allowFontScaling>
+              Tu salud en tiempo real
+            </Text>
+          </View>
+          <View style={styles.profileIcon} pointerEvents="none">
+            <Icon name="user" size={28} color={colors.textSecondary} />
+          </View>
+        </View>
+
+        {alertActive ? (
+          <MedicalAlertBanner
+            title="Alerta detectada"
+            subtitle={status.subtitle}
+            onPress={() => navigation.navigate('Alerts')}
           />
-          <Text style={styles.statusLine} allowFontScaling>
-            <Text style={styles.statusPrefix} allowFontScaling>
-              Estado:{' '}
-            </Text>
-            <Text style={[styles.statusValue, { color: statusColor }]} allowFontScaling>
-              {statusWord}
-            </Text>
-          </Text>
-          <Text style={styles.statusHint} allowFontScaling>
-            {status.subtitle}
-          </Text>
-        </View>
+        ) : null}
 
-        <Text style={styles.sectionLabel} allowFontScaling>
-          Signos vitales
-        </Text>
-        <View style={styles.metricsBlock}>
-          <View style={styles.metricsRow}>
-            <StatBox
-              value={SIM_HEART_RATE_BPM}
-              label="FC (bpm)"
-              style={[styles.statCell, styles.statLeft]}
-            />
-            <StatBox
-              value={`${SIM_TEMP_C.toFixed(1)} °C`}
-              label="Temp."
-              style={[styles.statCell, styles.statMid]}
-            />
-            <StatBox
-              value={`${SIM_SPO2}%`}
-              label="SpO₂"
-              style={[styles.statCell, styles.statRight]}
-            />
-          </View>
-          <View style={styles.bpRow}>
-            <StatBox value={bpLabel} label="PA (mmHg)" style={styles.statBp} />
-          </View>
-        </View>
-
-        <Text style={styles.sectionLabel} allowFontScaling>
-          Acciones rápidas
-        </Text>
-        {QUICK_ACTIONS.map((item) => (
-          <View key={item.id} style={styles.actionRow}>
-            <View style={styles.actionIconWrap} pointerEvents="none">
-              <Ionicons name={item.icon} size={ACTION_ICON_SIZE} color={colors.primary} />
+        {/* 2) Tarjeta principal: estado general */}
+        <Card style={[styles.statusCard, { backgroundColor: statusBg }]}>
+          <Text style={styles.statusCardLabel} allowFontScaling>
+            Estado general
+          </Text>
+          <View style={styles.statusCardContent}>
+            <View style={styles.statusIconWrap} pointerEvents="none">
+              <Icon name={statusIconName} size={28} color={statusColor} />
             </View>
-            <Button
-              title={item.title}
-              onPress={() => handleQuickAction(item)}
-              style={styles.actionButton}
-              accessibilityLabel={item.title}
-            />
+            <View style={styles.statusTextBlock}>
+              <Text style={[styles.statusBig, { color: statusColor }]} allowFontScaling>
+                {statusWord}
+              </Text>
+              <Text style={styles.statusSmall} allowFontScaling>
+                {statusSubtitle(status.level)}
+              </Text>
+            </View>
           </View>
-        ))}
+        </Card>
 
+        {/* 3) Métricas: grid 2x2 */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle} allowFontScaling>
+            Métricas
+          </Text>
+          <Text style={styles.sectionHint} allowFontScaling>
+            Actualizado recientemente
+          </Text>
+        </View>
+
+        <View style={styles.metricsGrid}>
+          <Card style={styles.metricCard}>
+            <View style={styles.metricIcon} pointerEvents="none">
+              <Icon name="heart" size={22} color={colors.primary} />
+            </View>
+            <Text style={styles.metricValue} allowFontScaling>
+              {vitals.heartRate} bpm
+            </Text>
+            <Text style={styles.metricLabel} allowFontScaling>
+              Ritmo cardíaco
+            </Text>
+          </Card>
+
+          <Card style={styles.metricCard}>
+            <View style={styles.metricIcon} pointerEvents="none">
+              <Icon name="temperature" size={22} color={colors.primary} />
+            </View>
+            <Text style={styles.metricValue} allowFontScaling>
+              {vitals.temperature.toFixed(1)}°C
+            </Text>
+            <Text style={styles.metricLabel} allowFontScaling>
+              Temperatura
+            </Text>
+          </Card>
+
+          <Card style={styles.metricCard}>
+            <View style={styles.metricIcon} pointerEvents="none">
+              <Icon name="blood" size={22} color={colors.primary} />
+            </View>
+            <Text style={styles.metricValue} allowFontScaling>
+              {bpLabel}
+            </Text>
+            <Text style={styles.metricLabel} allowFontScaling>
+              Presión
+            </Text>
+          </Card>
+
+          <Card style={styles.metricCard}>
+            <View style={styles.metricIcon} pointerEvents="none">
+              <Icon name="lungs" size={22} color={colors.primary} />
+            </View>
+            <Text style={styles.metricValue} allowFontScaling>
+              {vitals.oxygen}%
+            </Text>
+            <Text style={styles.metricLabel} allowFontScaling>
+              Oxígeno
+            </Text>
+          </Card>
+        </View>
+
+        {/* 4) Acciones: botones modernos */}
+        <Text style={styles.sectionTitleOnly} allowFontScaling>
+          Acciones
+        </Text>
+
+        <View style={styles.actionsRow}>
+          <PressableScale
+            containerStyle={styles.actionHalf}
+            style={[styles.actionBtn, styles.actionPrimary]}
+            onPress={() => navigation.navigate(historyTarget)}
+            accessibilityRole="button"
+            accessibilityLabel="Ver historial"
+          >
+            <View style={styles.actionBtnInner} pointerEvents="none">
+              <Icon name="calendar" size={18} color={colors.onPrimary} />
+              <Text style={styles.actionPrimaryText} allowFontScaling>
+                Ver historial
+              </Text>
+            </View>
+          </PressableScale>
+
+          <View style={styles.actionGap} />
+
+          <PressableScale
+            containerStyle={styles.actionHalf}
+            style={[styles.actionBtn, styles.actionSecondary]}
+            onPress={() => navigation.navigate('MedicalAI')}
+            accessibilityRole="button"
+            accessibilityLabel="IA médica"
+          >
+            <View style={styles.actionBtnInner} pointerEvents="none">
+              <Icon name="ai" size={18} color={colors.primary} />
+              <Text style={styles.actionSecondaryText} allowFontScaling>
+                IA médica
+              </Text>
+            </View>
+          </PressableScale>
+        </View>
+
+        {/* 5) Insight */}
         <Card style={styles.insightCard}>
-          <View style={styles.insightHeader}>
-            <View style={styles.insightIcon}>
-              <Ionicons name="information-circle-outline" size={spacing.lg} color={colors.primary} />
-            </View>
-            <Text style={styles.insightTitle} allowFontScaling>
-              Resumen clínico
-            </Text>
-          </View>
+          <Text style={styles.insightLabel} allowFontScaling>
+            Insight
+          </Text>
           <Text style={styles.insightBody} allowFontScaling>
             {insightText}
           </Text>
         </Card>
 
+        {/* 6) Último registro */}
         <Card style={styles.lastCard}>
-          <Text style={styles.lastLabel} allowFontScaling>
-            Último registro
-          </Text>
-          <Text style={styles.lastDate} allowFontScaling>
-            {DEMO_LAST_CLINICAL_EVENT.date}
-          </Text>
+          <View style={styles.lastHeaderRow}>
+            <Text style={styles.lastLabel} allowFontScaling>
+              Último registro clínico
+            </Text>
+            <Text style={styles.lastDate} allowFontScaling>
+              {DEMO_LAST_CLINICAL_EVENT.date}
+            </Text>
+          </View>
           <Text style={styles.lastDescription} allowFontScaling>
             {DEMO_LAST_CLINICAL_EVENT.description}
           </Text>
@@ -227,153 +321,250 @@ export default function HomeScreen({ navigation }) {
   );
 }
 
-const GUTTER = spacing.sm;
-
-const styles = StyleSheet.create({
+function createStyles(colors) {
+  return StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.background,
   },
   scroll: {
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xl + spacing.lg,
   },
-  hero: {
-    marginBottom: spacing.xl,
-  },
-  headerWrap: {
-    marginBottom: spacing.sm,
-    alignItems: 'flex-start',
-  },
-  greeting: {
-    fontSize: typography.title.fontSize,
-    fontWeight: typography.title.fontWeight,
-    color: colors.textPrimary,
-    textAlign: 'left',
-    width: '100%',
-  },
-  statusLine: {
-    marginTop: spacing.xs,
-    textAlign: 'left',
-    width: '100%',
-  },
-  statusPrefix: {
-    fontSize: typography.body.fontSize,
-    fontWeight: typography.body.fontWeight,
-    color: colors.textPrimary,
-  },
-  statusValue: {
-    fontSize: typography.subtitle.fontSize,
-    fontWeight: typography.subtitle.fontWeight,
-  },
-  statusHint: {
-    marginTop: spacing.sm,
-    fontSize: typography.caption.fontSize,
-    fontWeight: typography.caption.fontWeight,
-    color: colors.textSecondary,
-    lineHeight: typography.caption.fontSize * 1.5,
-    textAlign: 'left',
-    width: '100%',
-  },
-  sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    marginBottom: spacing.md,
-  },
-  metricsBlock: {
-    marginBottom: spacing.xl,
-  },
-  metricsRow: {
+  topHeader: {
     flexDirection: 'row',
-    alignItems: 'stretch',
-    marginHorizontal: -GUTTER / 2,
-  },
-  statCell: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    marginHorizontal: GUTTER / 2,
-  },
-  statLeft: {},
-  statMid: {},
-  statRight: {},
-  bpRow: {
-    marginTop: GUTTER,
-  },
-  statBp: {
-    paddingVertical: spacing.sm,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    marginBottom: spacing.md,
-  },
-  actionIconWrap: {
-    width: spacing.xl + spacing.lg,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-    backgroundColor: colors.surface,
-    borderRadius: spacing.radiusButton,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  actionButton: {
-    flex: 1,
-    minWidth: 0,
-  },
-  insightCard: {
+    justifyContent: 'space-between',
     marginBottom: spacing.lg,
-    padding: spacing.lg,
   },
-  insightHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
+  topHeaderText: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: spacing.md,
   },
-  insightIcon: {
-    marginRight: spacing.sm,
-  },
-  insightTitle: {
-    fontSize: typography.subtitle.fontSize,
-    fontWeight: typography.subtitle.fontWeight,
+  hello: {
+    fontSize: typography.title.fontSize + 6,
+    fontWeight: '800',
     color: colors.textPrimary,
+    letterSpacing: -0.6,
   },
-  insightBody: {
+  subHello: {
+    marginTop: spacing.xs,
     fontSize: typography.body.fontSize,
     fontWeight: typography.body.fontWeight,
     color: colors.textSecondary,
     lineHeight: typography.body.fontSize * 1.45,
   },
-  lastCard: {
-    marginBottom: spacing.lg,
+  profileIcon: {
+    width: spacing.xl + spacing.sm,
+    height: spacing.xl + spacing.sm,
+    borderRadius: (spacing.xl + spacing.sm) / 2,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  statusCard: {
+    borderRadius: spacing.radiusCard,
     padding: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  statusCardLabel: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: spacing.md,
+  },
+  statusCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusIconWrap: {
+    width: spacing.xl + spacing.lg,
+    height: spacing.xl + spacing.lg,
+    borderRadius: (spacing.xl + spacing.lg) / 2,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  statusTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  statusBig: {
+    fontSize: typography.title.fontSize,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  statusSmall: {
+    marginTop: spacing.xs,
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
+    color: colors.textSecondary,
+    lineHeight: typography.body.fontSize * 1.4,
+  },
+
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  sectionTitle: {
+    fontSize: typography.subtitle.fontSize,
+    fontWeight: typography.subtitle.fontWeight,
+    color: colors.textPrimary,
+  },
+  sectionHint: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: typography.caption.fontWeight,
+    color: colors.textSecondary,
+  },
+  sectionTitleOnly: {
+    fontSize: typography.subtitle.fontSize,
+    fontWeight: typography.subtitle.fontWeight,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+  },
+
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  metricCard: {
+    width: '48%',
+    padding: spacing.lg,
+  },
+  metricIcon: {
+    width: spacing.xl,
+    height: spacing.xl,
+    borderRadius: spacing.radiusButton,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  metricValue: {
+    fontSize: typography.subtitle.fontSize + 2,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+    letterSpacing: -0.2,
+  },
+  metricLabel: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: typography.caption.fontWeight,
+    color: colors.textSecondary,
+  },
+
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginBottom: spacing.xl,
+  },
+  actionHalf: {
+    flex: 1,
+  },
+  actionGap: {
+    width: spacing.md,
+  },
+  actionBtn: {
+    width: '100%',
+    minHeight: spacing.xl + spacing.md,
+    borderRadius: spacing.radiusButton,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  actionBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  actionPrimary: {
+    backgroundColor: colors.primary,
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: spacing.xs },
+    shadowRadius: spacing.md,
+    elevation: spacing.xs,
+  },
+  actionPrimaryText: {
+    fontSize: typography.body.fontSize,
+    fontWeight: '700',
+    color: colors.onPrimary,
+  },
+  actionSecondary: {
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  actionSecondaryText: {
+    fontSize: typography.body.fontSize,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+
+  insightCard: {
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  insightLabel: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: spacing.sm,
+  },
+  insightBody: {
+    fontSize: typography.body.fontSize,
+    fontWeight: typography.body.fontWeight,
+    color: colors.textPrimary,
+    lineHeight: typography.body.fontSize * 1.5,
+  },
+
+  lastCard: {
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  lastHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
   },
   lastLabel: {
     fontSize: typography.caption.fontSize,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: spacing.xs,
+    letterSpacing: 0.6,
+    flex: 1,
+    marginRight: spacing.md,
   },
   lastDate: {
     fontSize: typography.caption.fontSize,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.primary,
-    marginBottom: spacing.sm,
   },
   lastDescription: {
     fontSize: typography.body.fontSize,
     fontWeight: typography.body.fontWeight,
     color: colors.textPrimary,
-    lineHeight: typography.body.fontSize * 1.45,
+    lineHeight: typography.body.fontSize * 1.5,
   },
+
   footerHint: {
     fontSize: typography.caption.fontSize,
     fontWeight: typography.caption.fontWeight,
@@ -382,4 +573,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: typography.caption.fontSize * 1.5,
   },
-});
+  });
+}

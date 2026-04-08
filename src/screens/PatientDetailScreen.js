@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,21 +6,46 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/storage';
-import colors from '../constants/colors';
-import spacing from '../constants/spacing';
-import { fontSizes } from '../constants/typography';
+import { Card, Button, Input, StatBox } from '../components';
+import { spacing, typography, useTheme } from '../theme';
+import { evaluateMonitoringAlert } from '../utils/vitalsMonitoring';
+import { getMedicalRecordsByUser } from '../services/medicalRecordsService';
 
 /**
  * Detalle de paciente - Solo lectura
  * Recibe patientId por route.params, busca en USERS y muestra historial médico.
  */
 export default function PatientDetailScreen({ route }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { patientId } = route.params || {};
+  const incomingVitals = route.params?.vitals;
+  const incomingAlert = route.params?.alert;
+  const incomingLastMeasuredAt = route.params?.lastMeasuredAt;
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [note, setNote] = useState('');
+  const [vitals, setVitals] = useState(() =>
+    incomingVitals && typeof incomingVitals === 'object'
+      ? incomingVitals
+      : {
+          heartRate: 82,
+          systolic: 118,
+          diastolic: 76,
+          temp: 36.6,
+          spo2: 98,
+        }
+  );
+  const [medicalRecords, setMedicalRecords] = useState([]);
+  const [lastMeasuredAt, setLastMeasuredAt] = useState(
+    typeof incomingLastMeasuredAt === 'number'
+      ? new Date(incomingLastMeasuredAt)
+      : null
+  );
 
   useEffect(() => {
     loadPatient();
@@ -41,6 +66,27 @@ export default function PatientDetailScreen({ route }) {
       }
       const found = users.find((u) => u.id === patientId);
       setPatient(found || null);
+
+      // Cargar historial real de métricas del paciente
+      const records = await getMedicalRecordsByUser(patientId);
+      setMedicalRecords(records);
+      const latest = records[0];
+
+      // Si no se pasaron valores desde la lista, usamos la última medición real
+      if (!incomingVitals && latest?.bloodPressure) {
+        setVitals({
+          heartRate: latest.heartRate,
+          temp: latest.temperature,
+          systolic: latest.bloodPressure.systolic,
+          diastolic: latest.bloodPressure.diastolic,
+          spo2: latest.oxygen,
+        });
+      }
+
+      // Última medición (fecha real)
+      if (!incomingLastMeasuredAt && latest?.date) {
+        setLastMeasuredAt(new Date(latest.date));
+      }
     } catch (error) {
       console.error('Error al cargar paciente:', error);
     } finally {
@@ -90,24 +136,172 @@ export default function PatientDetailScreen({ route }) {
     </View>
   );
 
+  const alertStatus =
+    incomingAlert && typeof incomingAlert === 'object'
+      ? incomingAlert
+      : evaluateMonitoringAlert(
+          vitals.heartRate,
+          vitals.systolic,
+          vitals.diastolic,
+          vitals.spo2
+        );
+
+  const level = alertStatus?.level || 'stable';
+  const statusColor =
+    level === 'critical'
+      ? colors.danger
+      : level === 'warning'
+        ? colors.warning
+        : colors.success;
+  const statusBg =
+    level === 'critical'
+      ? `${colors.danger}14`
+      : level === 'warning'
+        ? `${colors.warning}14`
+        : `${colors.success}14`;
+
+  const bpLabel = `${vitals.systolic}/${vitals.diastolic}`;
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.block}>
+        <Card style={styles.block}>
+          <View style={styles.titleRow}>
+            <Text style={styles.blockTitle} allowFontScaling>
+              Estado clínico
+            </Text>
+            <View style={[styles.statusPill, { backgroundColor: statusBg }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={[styles.statusText, { color: statusColor }]} allowFontScaling>
+                {alertStatus?.title || 'Estable'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.subtitle} allowFontScaling>
+            {alertStatus?.subtitle || '—'}
+          </Text>
+          {lastMeasuredAt ? (
+            <Text style={styles.metaLine} allowFontScaling>
+              Última medición: {lastMeasuredAt.toLocaleString()}
+            </Text>
+          ) : null}
+        </Card>
+
+        <Text style={styles.sectionHeading} allowFontScaling>
+          Métricas
+        </Text>
+        <View style={styles.metricsGrid}>
+          <View style={styles.metricsRow}>
+            <StatBox value={vitals.heartRate} label="FC (bpm)" style={styles.metricCell} />
+            <StatBox value={`${vitals.temp.toFixed(1)} °C`} label="Temp" style={styles.metricCell} />
+          </View>
+          <View style={[styles.metricsRow, { marginTop: spacing.sm }]}>
+            <StatBox value={bpLabel} label="Presión" style={styles.metricCell} />
+            <StatBox value={`${vitals.spo2}%`} label="SpO₂" style={styles.metricCell} />
+          </View>
+        </View>
+
+        <Card style={styles.block}>
+          <Text style={styles.blockTitle} allowFontScaling>
+            Historial de métricas
+          </Text>
+          {medicalRecords && medicalRecords.length > 0 ? (
+            medicalRecords.slice(0, 5).map((r) => (
+              <View key={r.id} style={styles.recordLine}>
+                <Text style={styles.recordWhen} allowFontScaling>
+                  {r.date ? new Date(r.date).toLocaleString() : '—'}
+                </Text>
+                <Text style={styles.recordValues} allowFontScaling>
+                  FC {r.heartRate ?? '—'} · Temp{' '}
+                  {typeof r.temperature === 'number' ? r.temperature.toFixed(1) : '—'} °C · PA{' '}
+                  {r.bloodPressure?.systolic != null && r.bloodPressure?.diastolic != null
+                    ? `${r.bloodPressure.systolic}/${r.bloodPressure.diastolic}`
+                    : '—'}{' '}
+                  mmHg · SpO₂ {r.oxygen ?? '—'}%
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.noData} allowFontScaling>
+              Sin métricas registradas para este paciente.
+            </Text>
+          )}
+        </Card>
+
+        <Card style={styles.block}>
           <Text style={styles.blockTitle} allowFontScaling>
             Datos del paciente
           </Text>
           <Row label="Nombre" value={patient.name} />
           <Row label="ID" value={patient.id} />
           <Row label="Correo" value={patient.email} />
-        </View>
+          <Row label="Teléfono" value={patient.phone} />
+        </Card>
 
-        <View style={styles.block}>
+        <Card style={styles.block}>
           <Text style={styles.blockTitle} allowFontScaling>
-            Historial médico
+            Acciones
+          </Text>
+          <Button
+            title="Ver historial"
+            onPress={() => {
+              const summary = hasHistory
+                ? `Sangre: ${h.bloodType || '—'}\nAlergias: ${h.allergies || '—'}\nCrónicas: ${
+                    h.chronicDiseases || '—'
+                  }\nMedicamentos: ${h.medications || '—'}\nNotas: ${h.notes || '—'}`
+                : 'Sin datos médicos registrados.';
+              Alert.alert('Historial médico', summary, [{ text: 'Cerrar' }]);
+            }}
+            style={styles.actionBtn}
+            accessibilityLabel="Ver historial médico del paciente"
+          />
+          <Button
+            title="Contactar"
+            onPress={() => {
+              const contact = `Correo: ${patient.email || '—'}\nTeléfono: ${patient.phone || '—'}`;
+              Alert.alert(
+                'Contacto (simulado)',
+                `${contact}\n\nEn producción aquí se abriría chat, llamada o teleconsulta.`,
+                [{ text: 'OK' }]
+              );
+            }}
+            style={styles.actionBtnLast}
+            accessibilityLabel="Contactar al paciente"
+          />
+        </Card>
+
+        <Card style={styles.block}>
+          <Text style={styles.blockTitle} allowFontScaling>
+            Notas médicas (simulado)
+          </Text>
+          <Input
+            value={note}
+            onChangeText={setNote}
+            placeholder="Escribe una nota clínica..."
+            multiline
+            style={styles.notesInput}
+            accessibilityLabel="Notas médicas"
+          />
+          <Button
+            title="Guardar nota"
+            onPress={() =>
+              Alert.alert(
+                'Nota guardada',
+                'Se guardó de forma simulada (sin backend).',
+                [{ text: 'OK' }]
+              )
+            }
+            style={styles.actionBtnLast}
+            accessibilityLabel="Guardar nota médica simulada"
+          />
+        </Card>
+
+        <Card style={styles.block}>
+          <Text style={styles.blockTitle} allowFontScaling>
+            Historial médico (registro del paciente)
           </Text>
           {hasHistory ? (
             <>
@@ -122,65 +316,154 @@ export default function PatientDetailScreen({ route }) {
               Sin datos médicos registrados.
             </Text>
           )}
-        </View>
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.backgroundLight,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xxl,
-  },
-  loadingText: {
-    fontSize: fontSizes.base,
-    color: colors.textLight,
-    marginTop: spacing.md,
-  },
-  errorText: {
-    fontSize: fontSizes.base,
-    color: colors.textSecondary,
-  },
-  scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing.screen,
-  },
-  block: {
-    backgroundColor: colors.backgroundLighter,
-    padding: spacing.lg,
-    borderRadius: spacing.radiusMd,
-    marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  blockTitle: {
-    fontSize: fontSizes.lg,
-    fontWeight: '600',
-    color: colors.primaryLight,
-    marginBottom: spacing.md,
-  },
-  row: {
-    marginBottom: spacing.md,
-  },
-  label: {
-    fontSize: fontSizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  value: {
-    fontSize: fontSizes.base,
-    color: colors.textLight,
-  },
-  noData: {
-    fontSize: fontSizes.base,
-    color: colors.textMuted,
-    fontStyle: 'italic',
-  },
-});
+function createStyles(colors) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    centered: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: spacing.xxl,
+    },
+    loadingText: {
+      fontSize: typography.body.fontSize,
+      color: colors.textSecondary,
+      marginTop: spacing.md,
+    },
+    errorText: {
+      fontSize: typography.body.fontSize,
+      color: colors.textSecondary,
+    },
+    scrollContent: {
+      padding: spacing.lg,
+      paddingBottom: spacing.screen,
+    },
+    sectionHeading: {
+      fontSize: typography.caption.fontSize,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.6,
+      textTransform: 'uppercase',
+      marginBottom: spacing.md,
+      marginTop: spacing.sm,
+    },
+    block: {
+      padding: spacing.lg,
+      borderRadius: spacing.radiusLg,
+      marginBottom: spacing.lg,
+    },
+    blockTitle: {
+      fontSize: typography.subtitle.fontSize,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      marginBottom: spacing.md,
+    },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    statusPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs + 2,
+      borderRadius: spacing.radiusButton,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.borderSubtle,
+    },
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 999,
+    },
+    statusText: {
+      fontSize: typography.caption.fontSize,
+      fontWeight: '800',
+    },
+    subtitle: {
+      fontSize: typography.body.fontSize,
+      color: colors.textSecondary,
+      lineHeight: typography.body.fontSize * 1.45,
+    },
+    metaLine: {
+      marginTop: spacing.sm,
+      fontSize: typography.caption.fontSize,
+      color: colors.textSecondary,
+    },
+    metricsGrid: {
+      marginBottom: spacing.lg,
+    },
+    recordLine: {
+      marginTop: spacing.md,
+      paddingTop: spacing.md,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.borderSubtle,
+    },
+    recordWhen: {
+      fontSize: typography.caption.fontSize,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      marginBottom: spacing.xs / 2,
+    },
+    recordValues: {
+      fontSize: typography.body.fontSize,
+      fontWeight: typography.body.fontWeight,
+      color: colors.textPrimary,
+      lineHeight: typography.body.fontSize * 1.45,
+    },
+    metricsRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    metricCell: {
+      flex: 1,
+      minWidth: 0,
+    },
+    row: {
+      marginBottom: spacing.md,
+    },
+    label: {
+      fontSize: typography.caption.fontSize,
+      color: colors.textSecondary,
+      marginBottom: spacing.xs,
+    },
+    value: {
+      fontSize: typography.body.fontSize,
+      color: colors.textPrimary,
+    },
+    noData: {
+      fontSize: typography.body.fontSize,
+      color: colors.textSecondary,
+      fontStyle: 'italic',
+    },
+    actionBtn: {
+      width: '100%',
+      minHeight: spacing.minTouchTarget,
+      marginBottom: spacing.md,
+    },
+    actionBtnLast: {
+      width: '100%',
+      minHeight: spacing.minTouchTarget,
+      marginBottom: 0,
+      marginTop: spacing.md,
+    },
+    notesInput: {
+      minHeight: 120,
+      textAlignVertical: 'top',
+      paddingTop: spacing.md - 2,
+    },
+  });
+}
