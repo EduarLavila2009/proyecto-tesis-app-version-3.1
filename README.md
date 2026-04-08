@@ -1,157 +1,143 @@
-🏥 MEDICAL corp – Aplicación Digital del Sistema RAMP
+# 🏥 MEDICAL corp — App de Monitoreo de Salud Inteligente
 
-Aplicación móvil desarrollada como parte del proyecto de tesis:
+Aplicación móvil desarrollada con **React Native + Expo** enfocada en el monitoreo de salud en tiempo real, conexión entre pacientes y médicos, y asistencia mediante inteligencia artificial.
 
-“Construcción de un Robot Mecánico Médico Personal para la asistencia de la salud pública integral haciendo uso de la Inteligencia Artificial”
+---
 
-Esta aplicación representa el componente digital del sistema RAMP (Robot Asistente Médico Personal), funcionando como interfaz de interacción entre pacientes, especialistas y el prototipo robótico.
+## 🚀 Descripción
 
-🎯 Objetivo del Sistema
+**MEDICAL corp** es una app diseñada para mejorar el seguimiento médico remoto, permitiendo a los usuarios visualizar sus métricas de salud, recibir orientación mediante IA y conectar con profesionales de la salud de forma sencilla.
 
-La aplicación busca:
+---
 
-Digitalizar el registro clínico básico del paciente.
+## ✨ Funcionalidades principales
 
-Facilitar la organización de datos médicos.
+### 👤 Sistema de usuarios
 
-Integrar un asistente médico virtual con IA simulada.
+* Registro e inicio de sesión
+* Perfil editable
+* Imagen de perfil personalizada
+* Persistencia de datos con AsyncStorage
 
-Servir como base para la futura conexión con el robot físico NEUROBOT.
+---
 
-Establecer una arquitectura escalable hacia un sistema clínico más robusto.
+### 🎨 Diseño moderno
 
-🧠 Arquitectura del Proyecto
+* Interfaz limpia y minimalista
+* Componentes reutilizables
+* Experiencia optimizada para móvil
+* Diseño responsive
 
-La aplicación está diseñada bajo una arquitectura modular preparada para escalar hacia:
+---
 
-Integración con backend clínico.
+### 🌙 Modo oscuro / claro
 
-Comunicación con hardware robótico.
+* Cambio dinámico de tema
+* Persistencia de preferencia
+* Aplicado en toda la aplicación
 
-Implementación futura de IA real basada en modelos externos.
+---
 
-Gestión avanzada de pacientes para especialistas.
+### 📊 Monitoreo de salud
 
-⚙ Tecnologías Utilizadas
+* Ritmo cardíaco (bpm)
+* Temperatura corporal
+* Presión arterial
+* Nivel de oxígeno (SpO₂)
 
-Expo SDK 54
+---
 
-React Native
+### 📁 Historial clínico
 
-React Navigation (Stack Navigator)
+* Registros médicos organizados por fecha
+* Visualización clara y estructurada
 
-AsyncStorage (persistencia local)
+---
 
-JavaScript
+### 🤖 IA médica (asistente virtual)
 
-🏗 Estructura del Proyecto
-src/
-├── screens/        # Pantallas principales del sistema
-├── navigation/     # Configuración de navegación
-├── components/     # Componentes reutilizables
-├── constants/      # Colores, claves de almacenamiento
+* Chat interactivo
+* Orientación básica sobre síntomas
+* Diseño tipo mensajería moderna
 
-🔐 Sistema de Autenticación
+---
 
-Registro con generación automática de ID único:
+### 🔗 Conexión médico - paciente (QR)
 
-PAC-000X (Paciente)
+* Generación de QR para pacientes
+* Escaneo desde cuenta médica
+* Vinculación entre usuarios
 
-MED-000X (Médico)
+---
 
-Persistencia de sesión automática.
+### 👨‍⚕️ Panel médico
 
-Separación por roles.
+* Visualización de pacientes conectados
+* Acceso a métricas y datos
+* Interfaz profesional
 
-Gestión local de usuarios mediante AsyncStorage.
+---
 
-🩺 Funcionalidades Implementadas
-Fase 1 – Base del Sistema
+### 🔔 Sistema de alertas
 
-Selección de rol (Paciente / Médico)
+* Detección de valores anormales
+* Indicadores visuales de estado
 
-Registro de usuario con ID único
+---
 
-Inicio de sesión con validaciones
+## 🛠️ Tecnologías utilizadas
 
-Persistencia automática de sesión
+* React Native
+* Expo
+* AsyncStorage
+* Expo Image Picker
+* Expo Barcode Scanner
+* React Navigation
+* React Native SVG
 
-Menú dinámico según rol
+---
 
-Fase 2 – Gestión Clínica del Paciente
+## 📦 Instalación
 
-Historial médico editable:
-
-Tipo de sangre
-
-Alergias
-
-Enfermedades crónicas
-
-Medicamentos
-
-Notas
-
-Persistencia estructurada en almacenamiento local
-
-Identificación por ID único
-
-Fase 3 – Módulo Médico
-
-Lista de pacientes registrados
-
-Visualización del historial médico por ID
-
-Restricción de acceso por rol
-
-Fase 4 – Asistente Médico Virtual (IA Simulada)
-
-Chat interactivo tipo conversación
-
-Detección básica de síntomas por palabras clave
-
-Respuestas responsables con advertencia médica
-
-Simulación de escritura
-
-Scroll automático
-
-Persistencia de experiencia conversacional
-
-🤖 Visión Futura
-
-El sistema está diseñado para integrarse con:
-
-Robot físico NEUROBOT.
-
-Sensores biomédicos.
-
-Monitoreo remoto.
-
-IA predictiva real.
-
-Infraestructura hospitalaria pública.
-
-La aplicación constituye el núcleo digital del ecosistema RAMP.
-
-🚀 Instalación y Ejecución
-cd medical-corp-app
+```bash
+git clone https://github.com/EduarLavila2009/proyecto-tesis-app-version-3.1
+cd proyecto-tesis-app-version-3.1
 npm install
 npx expo start
+```
 
+---
 
-Abrir Expo Go y escanear el código QR.
+## 📱 Uso
 
-📌 Estado Actual del Proyecto
+1. Seleccionar tipo de usuario (Paciente o Médico)
+2. Crear cuenta o iniciar sesión
+3. Acceder al dashboard
+4. Visualizar métricas de salud
+5. Conectar con médico mediante QR
+6. Usar IA médica
 
-Versión funcional con:
+---
 
-Control de roles.
+## 🎯 Estado del proyecto
 
-Persistencia estructurada.
+🚧 En desarrollo activo
 
-Identificación única por paciente.
+Próximas mejoras:
 
-Arquitectura lista para backend.
+* Gráficas de métricas
+* Backend real (API / Firebase)
+* Notificaciones push
+* IA avanzada con contexto del usuario
 
-Base preparada para expansión clínica y robótica.
+---
+
+## 📌 Autor
+
+Desarrollado por **Eduar Lavila**
+
+---
+
+## ⚠️ Aviso
+
+Esta aplicación es únicamente informativa y **no reemplaza una consulta médica profesional**.
