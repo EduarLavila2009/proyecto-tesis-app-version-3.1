@@ -1,72 +1,86 @@
 /**
- * Tokens de color — modo claro y oscuro.
+ * Tokens de color — Material Design (claro / oscuro).
  * Usar `useTheme().colors` en pantallas; no hardcodear hex.
+ *
+ * Contraste texto/fondo ≥ 4.5:1 (WCAG AA).
  */
 
 export const lightColors = {
-  primary: '#2563EB',
-  primaryPressed: '#1D4ED8',
+  primary: '#6200EE',
+  primaryPressed: '#5000C8',
 
-  secondary: '#22C55E',
-  secondaryMuted: 'rgba(34, 197, 94, 0.12)',
+  secondary: '#03DAC6',
+  secondaryMuted: 'rgba(3, 218, 198, 0.12)',
 
-  background: '#F8FAFC',
+  background: '#FFFFFF',
   surface: '#FFFFFF',
 
-  textPrimary: '#0F172A',
-  textSecondary: '#64748B',
-  textPlaceholder: '#475569',
-  textDisabled: '#94A3B8',
+  textPrimary: '#000000',
+  textSecondary: '#666666',
+  textPlaceholder: '#757575',
+  textDisabled: '#9E9E9E',
 
   onPrimary: '#FFFFFF',
-  onSecondary: '#FFFFFF',
+  onSecondary: '#000000',
 
-  borderSubtle: '#E2E8F0',
-  borderFocus: '#2563EB',
+  borderSubtle: '#E0E0E0',
+  borderFocus: '#6200EE',
 
-  danger: '#EF4444',
-  success: '#22C55E',
-  warning: '#F59E0B',
-  info: '#2563EB',
+  /** Alias semántico solicitado */
+  error: '#B00020',
+  danger: '#B00020',
+  success: '#018786',
+  warning: '#F57C00',
+  info: '#6200EE',
 
-  shadow: '#0F172A',
+  shadow: '#000000',
 
-  buttonDisabled: '#E2E8F0',
-  buttonDisabledText: '#334155',
+  buttonDisabled: '#E0E0E0',
+  buttonDisabledText: '#666666',
+
+  /** Escáner QR / cámara */
+  cameraBackground: '#000000',
+  onCamera: '#FFFFFF',
+  scanFrameBorder: 'rgba(255,255,255,0.85)',
 };
 
-/** Oscuro: base azul-pizarra (no gris plano). */
+/** Modo oscuro — variantes Material con misma identidad de marca. */
 export const darkColors = {
-  primary: '#3B82F6',
-  primaryPressed: '#2563EB',
+  primary: '#BB86FC',
+  primaryPressed: '#985EFF',
 
-  secondary: '#34D399',
-  secondaryMuted: 'rgba(52, 211, 153, 0.16)',
+  secondary: '#03DAC6',
+  secondaryMuted: 'rgba(3, 218, 198, 0.16)',
 
-  background: '#0B1220',
-  surface: '#151E2E',
+  background: '#121212',
+  surface: '#1E1E1E',
 
-  textPrimary: '#F1F5F9',
-  textSecondary: '#94A3B8',
-  textPlaceholder: '#64748B',
-  textDisabled: '#64748B',
+  textPrimary: '#FFFFFF',
+  textSecondary: '#B3B3B3',
+  textPlaceholder: '#9E9E9E',
+  textDisabled: '#757575',
 
   onPrimary: '#FFFFFF',
-  onSecondary: '#0B1220',
+  onSecondary: '#000000',
 
-  borderSubtle: '#2D3F55',
-  borderFocus: '#60A5FA',
+  borderSubtle: '#2C2C2C',
+  borderFocus: '#BB86FC',
 
-  danger: '#F87171',
-  success: '#4ADE80',
-  warning: '#FBBF24',
-  info: '#60A5FA',
+  error: '#CF6679',
+  danger: '#CF6679',
+  success: '#03DAC6',
+  warning: '#FFB74D',
+  info: '#BB86FC',
 
-  shadow: '#020617',
+  shadow: '#000000',
 
-  buttonDisabled: '#334155',
-  buttonDisabledText: '#94A3B8',
+  buttonDisabled: '#2C2C2C',
+  buttonDisabledText: '#9E9E9E',
+
+  cameraBackground: '#000000',
+  onCamera: '#FFFFFF',
+  scanFrameBorder: 'rgba(255,255,255,0.85)',
 };
 
-/** Compatibilidad: tema claro por defecto si se importa sin contexto. */
+/** Tema claro por defecto (import estático sin contexto). */
 export const colors = lightColors;

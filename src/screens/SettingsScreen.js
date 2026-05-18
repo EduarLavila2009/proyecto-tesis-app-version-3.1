@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Switch } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 
-import { spacing, typography, useTheme } from '../theme';
-import { PressableScale, Card } from '../components';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { spacing, typography, layout, stackScrollContent, useTheme } from '../theme';
+import { PressableScale, Card, ScreenContainer } from '../components';
 import { logout } from '../services/authService';
 
 function SettingsRow({
@@ -57,7 +57,8 @@ function SettingsRow({
 
 export default function SettingsScreen() {
   const { colors, isDark, setMode } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(colors, insets), [colors, insets]);
   const navigation = useNavigation();
 
   const handleEditProfile = () => {
@@ -86,12 +87,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <View style={styles.container}>
-        <Text style={styles.heading} allowFontScaling>
-          Ajustes
-        </Text>
-
+    <ScreenContainer scroll contentContainerStyle={styles.scroll}>
         <Card style={styles.card}>
           <SettingsRow
             icon="moon"
@@ -145,33 +141,20 @@ export default function SettingsScreen() {
             onPress={handleLogout}
           />
         </Card>
-      </View>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, insets) {
   return StyleSheet.create({
-    safe: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    container: {
-      flex: 1,
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.lg,
-    },
-    heading: {
-      fontSize: typography.title.fontSize,
-      fontWeight: '800',
-      color: colors.textPrimary,
-      marginBottom: spacing.lg,
-      letterSpacing: -0.3,
-    },
+    scroll: stackScrollContent(insets, {
+      maxWidth: layout.contentMaxWidth,
+      alignSelf: 'center',
+      width: '100%',
+    }),
     card: {
       paddingVertical: spacing.sm,
       paddingHorizontal: spacing.md,
-      borderRadius: spacing.radiusLg,
       marginBottom: spacing.lg,
     },
     separator: {

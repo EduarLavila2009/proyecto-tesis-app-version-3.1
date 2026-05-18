@@ -21,12 +21,13 @@ Aplicación móvil desarrollada con **React Native + Expo** enfocada en el monit
 
 ---
 
-### 🎨 Diseño moderno
+### 🎨 Sistema de diseño global
 
-* Interfaz limpia y minimalista
-* Componentes reutilizables
-* Experiencia optimizada para móvil
-* Diseño responsive
+* Tema unificado (`src/theme/`: colores, tipografía, espaciado, layout)
+* Componentes UI reutilizables (`Button`, `Input`, `Card`, `ScreenHeader`, etc.)
+* Modo claro/oscuro con `ThemeProvider` y `expo-system-ui`
+* Accesibilidad: español, contraste ≥4.5:1, targets táctiles ≥44px
+* Guía completa: [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)
 
 ---
 
@@ -91,7 +92,8 @@ Aplicación móvil desarrollada con **React Native + Expo** enfocada en el monit
 * Expo
 * AsyncStorage
 * Expo Image Picker
-* Expo Barcode Scanner
+* Expo Camera (escáner QR)
+* Expo System UI (fondo del sistema / status bar)
 * React Navigation
 * React Native SVG
 
@@ -103,8 +105,16 @@ Aplicación móvil desarrollada con **React Native + Expo** enfocada en el monit
 git clone https://github.com/EduarLavila2009/proyecto-tesis-app-version-3.1
 cd proyecto-tesis-app-version-3.1
 npm install
-npx expo start
+npx expo install expo-system-ui expo-camera
+npx expo start -c
 ```
+
+### Capturas en Expo Go
+
+1. Ejecuta `npx expo start -c` y abre el proyecto en **Expo Go** (Android/iOS).
+2. Revisa: selección de rol → login → registro → (médico) vincular paciente / escáner QR.
+3. En Ajustes, alterna modo oscuro para validar el tema.
+4. Toma capturas desde el dispositivo o el menú de desarrollo de Expo.
 
 ---
 

@@ -3,15 +3,12 @@ import { View, Text, StyleSheet } from 'react-native';
 import { spacing, typography, useTheme } from '../theme';
 
 /**
- * Caja de métrica: valor destacado arriba, etiqueta debajo, contenido centrado.
- *
- * @param {string|number|null|undefined} value Valor mostrado (grande). Si es null/undefined, se muestra "—".
- * @param {string} label Descripción bajo el valor.
- * @param {import('react-native').StyleProp<import('react-native').ViewStyle>} [style] Estilos adicionales del contenedor.
+ * Caja de métrica — valor destacado + etiqueta.
+ * @param {'default'|'accent'} [variant='default'] — accent usa color primary en el valor
  */
-export default function StatBox({ value, label, style }) {
+export default function StatBox({ value, label, style, variant = 'default' }) {
   const { colors, cardShadow } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, variant), [colors, variant]);
   const displayValue = value === null || value === undefined ? '—' : String(value);
 
   return (
@@ -20,40 +17,44 @@ export default function StatBox({ value, label, style }) {
       accessible
       accessibilityLabel={`${displayValue}, ${label}`}
     >
-      <Text style={styles.value} allowFontScaling>
+      <Text style={styles.value} allowFontScaling numberOfLines={2}>
         {displayValue}
       </Text>
-      <Text style={styles.label} allowFontScaling>
+      <Text style={styles.label} allowFontScaling numberOfLines={2}>
         {label}
       </Text>
     </View>
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, variant) {
   return StyleSheet.create({
     container: {
+      flex: 1,
+      minWidth: 0,
       backgroundColor: colors.surface,
-      borderRadius: spacing.radiusLg,
-      padding: spacing.md,
+      borderRadius: spacing.radiusCard,
+      paddingVertical: spacing.m,
+      paddingHorizontal: spacing.s,
       alignItems: 'center',
       justifyContent: 'center',
-      minWidth: spacing.xl + spacing.lg + spacing.md,
+      minHeight: spacing.minTouchTarget * 2,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.borderSubtle,
     },
     value: {
-      fontSize: typography.title.fontSize,
-      fontWeight: typography.title.fontWeight,
-      color: colors.textPrimary,
+      fontSize: typography.h2.fontSize,
+      fontWeight: '700',
+      lineHeight: typography.h2.lineHeight,
+      color: variant === 'accent' ? colors.primary : colors.textPrimary,
       marginBottom: spacing.xs,
       textAlign: 'center',
     },
     label: {
-      fontSize: typography.caption.fontSize,
-      fontWeight: typography.caption.fontWeight,
+      ...typography.caption,
       color: colors.textSecondary,
       textAlign: 'center',
+      fontWeight: '600',
     },
   });
 }

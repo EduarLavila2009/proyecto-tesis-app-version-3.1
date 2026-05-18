@@ -1,50 +1,78 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Platform,
-  LayoutAnimation,
-  UIManager,
   StatusBar,
 } from 'react-native';
-import { CommonActions } from '@react-navigation/native';
+// Helper seguro: no usa UIManager.setLayoutAnimationEnabledExperimental (Fabric / newArchEnabled).
+import { configureLayoutAnimation } from '../utils/layoutAnimation';
+import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
-import { spacing, typography, useTheme } from '../theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from '../constants/storage';
+import {
+  spacing,
+  typography,
+  layout,
+  screenScrollContent,
+  authFormWrapStyle,
+  authFormCardStyle,
+  createAuthFieldStyle,
+  useTheme,
+} from '../theme';
 import {
   Card,
-  Header,
-  Input,
-  Button,
-  PressableScale,
+  TextInputField,
+  PasswordInput,
+  PrimaryButton,
   ScreenContainer,
+  ScreenHeader,
+  OnboardingProgress,
+  RoleBadge,
+  TextLink,
 } from '../components';
 import * as authService from '../services/authService';
 
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
 /**
- * Pantalla de inicio de sesión — UI con tema global; toda la lógica en `authService.login`.
+ * Inicio de sesión — flujo onboarding paso 2.
  */
 export default function LoginScreen({ navigation }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const fieldStyles = useMemo(() => createAuthFieldStyle(), []);
   const headerHeight = useHeaderHeight();
   const keyboardOffset =
     headerHeight + (Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0);
+  const formWrap = authFormWrapStyle();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
   const [loginError, setLoginError] = useState('');
+  const [selectedRole, setSelectedRole] = useState(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const role = await AsyncStorage.getItem(STORAGE_KEYS.ROLE);
+          if (!cancelled) setSelectedRole(role);
+        } catch (_) {
+          if (!cancelled) setSelectedRole(null);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   const handleLogin = async () => {
     setLoginError('');
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    configureLayoutAnimation();
 
     const res = await authService.login(email, password);
 
@@ -69,7 +97,7 @@ export default function LoginScreen({ navigation }) {
       console.error('Error en login:', res.error);
     }
 
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    configureLayoutAnimation();
     if (res.code === 'VALIDATION_ERROR') {
       setLoginError('');
       return;
@@ -83,178 +111,127 @@ export default function LoginScreen({ navigation }) {
     );
   };
 
+  const goToRoleSelection = () => {
+    navigation.navigate('RoleSelection');
+  };
+
   const isSubmitDisabled = email.trim() === '' || password === '';
 
   return (
     <ScreenContainer
       scroll
+      animateEnter
       keyboardAvoiding
       keyboardVerticalOffset={keyboardOffset}
       contentContainerStyle={styles.scroll}
     >
-          <View style={styles.headerSection}>
-            <Header
-              title="Iniciar Sesión"
-              style={styles.headerWrap}
-              textStyle={styles.headerTitle}
-            />
-            <Text style={styles.subtitle} allowFontScaling>
-              Accede con tu cuenta MEDICAL corp
+      <View style={formWrap}>
+        <OnboardingProgress currentStep={2} />
+        <RoleBadge role={selectedRole} />
+        <ScreenHeader
+          title="Accede a tu cuenta"
+          subtitle="Ingresa el correo y la contraseña con los que te registraste."
+          centered={false}
+          style={styles.headerSection}
+        />
+
+        <Card style={[authFormCardStyle(), styles.card]}>
+          <TextInputField
+            label="Correo electrónico"
+            required
+            containerStyle={fieldStyles.field}
+            value={email}
+            error={errors.email}
+            validationType="email"
+            validateOnBlur
+            onChangeText={(text) => {
+              setEmail(text);
+              setLoginError('');
+              if (errors.email) setErrors({ ...errors, email: null });
+            }}
+            placeholder="nombre@correo.com"
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Campo de correo electrónico"
+            style={fieldStyles.input}
+          />
+
+          <PasswordInput
+            label="Contraseña"
+            required
+            containerStyle={fieldStyles.field}
+            value={password}
+            error={errors.password}
+            minLength={1}
+            onChangeText={(text) => {
+              setPassword(text);
+              setLoginError('');
+              if (errors.password) setErrors({ ...errors, password: null });
+            }}
+            placeholder="Introduce tu contraseña"
+            accessibilityLabel="Campo de contraseña"
+            style={fieldStyles.input}
+          />
+
+          {loginError ? (
+            <Text
+              style={[styles.loginErrorText, fieldStyles.bannerError]}
+              accessibilityLiveRegion="polite"
+              allowFontScaling
+            >
+              {loginError}
             </Text>
-          </View>
+          ) : null}
 
-          <View style={styles.cardWrap}>
-            <Card style={styles.card}>
-              <Input
-                label="Email"
-                containerStyle={styles.fieldBlock}
-                value={email}
-                error={errors.email}
-                onChangeText={(text) => {
-                  setEmail(text);
-                  setLoginError('');
-                  if (errors.email) setErrors({ ...errors, email: null });
-                }}
-                placeholder="nombre@correo.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                accessibilityLabel="Campo de correo electrónico"
-                style={styles.input}
-              />
+          <PrimaryButton
+            title="Entrar"
+            onPress={handleLogin}
+            disabled={isSubmitDisabled}
+            style={fieldStyles.submit}
+            accessibilityLabel="Iniciar sesión"
+          />
+        </Card>
 
-              <Input
-                label="Contraseña"
-                containerStyle={styles.fieldBlock}
-                value={password}
-                error={errors.password}
-                onChangeText={(text) => {
-                  setPassword(text);
-                  setLoginError('');
-                  if (errors.password) setErrors({ ...errors, password: null });
-                }}
-                placeholder="Introduce tu contraseña"
-                secureTextEntry
-                accessibilityLabel="Campo de contraseña"
-                style={styles.input}
-              />
+        <TextLink
+          onPress={() => navigation.navigate('Register')}
+          accent="Regístrate"
+          accessibilityLabel="¿No tienes cuenta? Regístrate"
+        >
+          ¿No tienes cuenta?{' '}
+        </TextLink>
 
-              {loginError ? (
-                <Text
-                  style={styles.loginErrorText}
-                  accessibilityLiveRegion="polite"
-                  allowFontScaling
-                >
-                  {loginError}
-                </Text>
-              ) : null}
-
-              <Button
-                title="Entrar"
-                onPress={handleLogin}
-                disabled={isSubmitDisabled}
-                style={styles.submitBtn}
-                accessibilityLabel="Iniciar sesión, botón Entrar"
-              />
-            </Card>
-          </View>
-
-          <PressableScale
-            style={styles.linkWrap}
-            onPress={() => navigation.navigate('Register')}
-            accessibilityRole="link"
-            accessibilityLabel="Ir a registro, ¿no tienes cuenta?"
-          >
-            <Text style={styles.linkText} allowFontScaling>
-              ¿No tienes cuenta?{' '}
-              <Text style={styles.linkAccent} allowFontScaling>
-                Regístrate
-              </Text>
-            </Text>
-          </PressableScale>
+        <TextLink
+          onPress={goToRoleSelection}
+          accent="Cambiar perfil"
+          style={styles.secondaryLink}
+          accessibilityLabel="Cambiar perfil de paciente o médico"
+        >
+          ¿Elegiste otro perfil?{' '}
+        </TextLink>
+      </View>
     </ScreenContainer>
   );
 }
 
-const MAX_FORM_WIDTH = spacing.md * 26;
-const HEADER_TITLE_SIZE = typography.title.fontSize + 6;
-
 function createStyles(colors) {
   return StyleSheet.create({
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xl + spacing.lg,
-  },
-  headerSection: {
-    width: '100%',
-    marginBottom: spacing.xl,
-  },
-  headerWrap: {
-    alignItems: 'flex-start',
-    marginBottom: spacing.sm,
-  },
-  headerTitle: {
-    fontSize: HEADER_TITLE_SIZE,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'left',
-    width: '100%',
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: typography.body.fontSize,
-    fontWeight: typography.body.fontWeight,
-    color: colors.textSecondary,
-    lineHeight: typography.body.fontSize * 1.45,
-    textAlign: 'left',
-    width: '100%',
-    marginTop: spacing.xs,
-  },
-  cardWrap: {
-    width: '100%',
-    maxWidth: MAX_FORM_WIDTH,
-    alignSelf: 'center',
-  },
-  card: {
-    width: '100%',
-    padding: spacing.lg + spacing.xs,
-  },
-  fieldBlock: {
-    marginBottom: spacing.lg,
-  },
-  input: {
-    width: '100%',
-    minHeight: spacing.xl + spacing.md,
-  },
-  loginErrorText: {
-    fontSize: typography.body.fontSize,
-    fontWeight: typography.body.fontWeight,
-    color: colors.danger,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-    lineHeight: typography.body.fontSize * 1.45,
-  },
-  submitBtn: {
-    width: '100%',
-    marginTop: spacing.sm,
-    minHeight: spacing.xl + spacing.md,
-  },
-  linkWrap: {
-    marginTop: spacing.xl,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-  },
-  linkText: {
-    fontSize: typography.body.fontSize,
-    fontWeight: typography.body.fontWeight,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  linkAccent: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
+    scroll: screenScrollContent({
+      paddingTop: layout.screenPaddingTop,
+    }),
+    headerSection: {
+      marginBottom: layout.fieldGap,
+    },
+    card: {
+      marginBottom: spacing.s,
+    },
+    loginErrorText: {
+      ...typography.body,
+      color: colors.error,
+      textAlign: 'center',
+      lineHeight: typography.body.lineHeight,
+    },
+    secondaryLink: {
+      marginTop: spacing.s,
+    },
   });
 }

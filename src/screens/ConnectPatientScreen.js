@@ -6,25 +6,25 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
-  Pressable,
   Animated,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BarCodeScanner } from 'expo-barcode-scanner';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
 import {
   parsePatientQrPayload,
   linkDoctorToPatient,
 } from '../services/connectionService';
-import { spacing, typography, useTheme } from '../theme';
-
-const QR_TYPES =
-  BarCodeScanner.Constants?.BarCodeType?.qr != null
-    ? [BarCodeScanner.Constants.BarCodeType.qr]
-    : ['qr'];
+import {
+  PrimaryButton,
+  SecondaryButton,
+  ScreenContainer,
+  ScreenHeader,
+  IconCircle,
+} from '../components';
+import { spacing, typography, layout, motion, useTheme } from '../theme';
 
 /**
  * Médico: escanea el QR del paciente y guarda vínculo local (AsyncStorage).
@@ -32,9 +32,9 @@ const QR_TYPES =
 export default function ConnectPatientScreen({ navigation }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [loadingUser, setLoadingUser] = useState(true);
   const [doctorId, setDoctorId] = useState(null);
-  const [permission, setPermission] = useState(null);
   const [phase, setPhase] = useState('intro');
   const [handled, setHandled] = useState(false);
   const handledRef = useRef(false);
@@ -74,27 +74,21 @@ export default function ConnectPatientScreen({ navigation }) {
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
-    (async () => {
-      const { status } = await BarCodeScanner.requestPermissionsAsync();
-      setPermission(status === 'granted');
-    })();
-  }, []);
+    requestCameraPermission();
+  }, [requestCameraPermission]);
 
   const runSuccessAnimation = useCallback(() => {
     scaleAnim.setValue(0);
     Animated.spring(scaleAnim, {
       toValue: 1,
-      friction: 6,
-      tension: 120,
-      useNativeDriver: true,
+      ...motion.spring.success,
     }).start();
   }, [scaleAnim]);
 
-  const onBarCodeScanned = useCallback(
-    async (nativeEvent) => {
+  const onBarcodeScanned = useCallback(
+    async ({ data }) => {
       if (handledRef.current || !doctorId) return;
       handledRef.current = true;
-      const data = nativeEvent?.data;
       const parsed = parsePatientQrPayload(data);
       if (!parsed) {
         setHandled(true);
@@ -113,7 +107,9 @@ export default function ConnectPatientScreen({ navigation }) {
           ok: true,
           title: res.alreadyLinked ? 'Ya vinculado' : '¡Conectado!',
           message: res.alreadyLinked ? res.message : `${res.patientName}`,
-          subtitle: res.alreadyLinked ? undefined : 'El paciente aparecerá en tu lista como vinculado.',
+          subtitle: res.alreadyLinked
+            ? undefined
+            : 'El paciente aparecerá en tu lista como vinculado.',
         });
         runSuccessAnimation();
         setTimeout(() => navigation.goBack(), res.alreadyLinked ? 1800 : 2200);
@@ -133,9 +129,8 @@ export default function ConnectPatientScreen({ navigation }) {
       Alert.alert('No disponible', 'El escáner solo funciona en iOS y Android.');
       return;
     }
-    const { status } = await BarCodeScanner.requestPermissionsAsync();
-    setPermission(status === 'granted');
-    if (status !== 'granted') {
+    const permissionResult = await requestCameraPermission();
+    if (!permissionResult.granted) {
       Alert.alert(
         'Permiso de cámara',
         'Necesitamos acceso a la cámara para leer el código QR del paciente.'
@@ -155,298 +150,244 @@ export default function ConnectPatientScreen({ navigation }) {
     setResult(null);
   };
 
+  const resetToIntro = () => {
+    setResult(null);
+    handledRef.current = false;
+    setHandled(false);
+    setPhase('intro');
+  };
+
   if (loadingUser) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </SafeAreaView>
+      <ScreenContainer contentContainerStyle={styles.centeredContent}>
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="Cargando" />
+        <Text style={styles.loadingLabel} allowFontScaling>
+          Preparando escáner…
+        </Text>
+      </ScreenContainer>
     );
   }
 
   if (!doctorId) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.centered}>
-          <Ionicons name="warning-outline" size={48} color={colors.warning} />
-          <Text style={styles.errorTitle} allowFontScaling>
-            Solo médicos
-          </Text>
-          <Text style={styles.errorBody} allowFontScaling>
-            Inicia sesión como médico para vincular pacientes.
-          </Text>
-          <Pressable style={styles.secondaryBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.secondaryBtnText}>Volver</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      <ScreenContainer contentContainerStyle={styles.centeredContent}>
+        <IconCircle color={colors.warning} size={88}>
+          <Ionicons name="warning-outline" size={40} color={colors.warning} />
+        </IconCircle>
+        <ScreenHeader
+          title="Solo médicos"
+          subtitle="Inicia sesión con un perfil médico para vincular pacientes."
+          style={styles.feedbackHeader}
+        />
+        <SecondaryButton
+          title="Volver"
+          appearance="outline"
+          onPress={() => navigation.goBack()}
+          style={styles.feedbackButton}
+          accessibilityLabel="Volver"
+        />
+      </ScreenContainer>
     );
   }
 
   if (Platform.OS === 'web') {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.centered}>
-          <Ionicons name="phone-portrait-outline" size={48} color={colors.textSecondary} />
-          <Text style={styles.introTitle} allowFontScaling>
-            Escáner no disponible en web
-          </Text>
-          <Text style={styles.introHint} allowFontScaling>
-            Usa la app en un dispositivo móvil para escanear códigos QR.
-          </Text>
-          <Pressable style={styles.secondaryBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.secondaryBtnText}>Volver</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      <ScreenContainer contentContainerStyle={styles.centeredContent}>
+        <IconCircle color={colors.textSecondary}>
+          <Ionicons name="phone-portrait-outline" size={40} color={colors.textSecondary} />
+        </IconCircle>
+        <ScreenHeader
+          title="Escáner no disponible en web"
+          subtitle="Usa Expo Go en un dispositivo móvil para escanear códigos QR."
+          style={styles.feedbackHeader}
+        />
+        <SecondaryButton
+          title="Volver"
+          appearance="outline"
+          onPress={() => navigation.goBack()}
+          style={styles.feedbackButton}
+          accessibilityLabel="Volver"
+        />
+      </ScreenContainer>
     );
   }
 
-  if (phase === 'camera' && permission && !result) {
+  if (phase === 'camera' && cameraPermission?.granted && !result) {
     return (
       <View style={styles.cameraRoot}>
-        <BarCodeScanner
-          onBarCodeScanned={handled ? undefined : onBarCodeScanned}
+        <CameraView
+          onBarcodeScanned={handled ? undefined : onBarcodeScanned}
+          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           style={StyleSheet.absoluteFillObject}
-          barCodeTypes={QR_TYPES}
         />
-        <SafeAreaView style={styles.overlay} pointerEvents="box-none">
+        <View style={styles.overlay} pointerEvents="box-none">
           <View style={styles.scanFrame} />
           <Text style={styles.scanHint} allowFontScaling>
             Coloca el QR del paciente dentro del marco
           </Text>
-          <Pressable style={styles.cancelScanBtn} onPress={cancelCamera}>
-            <Text style={styles.cancelScanText}>Cancelar</Text>
-          </Pressable>
-        </SafeAreaView>
+          <SecondaryButton
+            title="Cancelar"
+            appearance="ghost"
+            onPress={cancelCamera}
+            style={styles.cancelScanBtn}
+            accessibilityLabel="Cancelar escaneo"
+          />
+        </View>
       </View>
     );
   }
 
   if (result && !result.ok) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.resultBox}>
-          <Ionicons name="close-circle" size={56} color={colors.danger} />
-          <Text style={styles.resultTitle} allowFontScaling>
-            {result.title}
-          </Text>
-          <Text style={styles.resultBody} allowFontScaling>
-            {result.message}
-          </Text>
-          <Pressable
-            style={styles.primaryBtn}
-            onPress={() => {
-              setResult(null);
-              handledRef.current = false;
-              setHandled(false);
-              setPhase('intro');
-            }}
-          >
-            <Text style={styles.primaryBtnText}>Entendido</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      <ScreenContainer contentContainerStyle={styles.centeredContent}>
+        <IconCircle color={colors.error}>
+          <Ionicons name="close-circle" size={48} color={colors.error} />
+        </IconCircle>
+        <ScreenHeader
+          title={result.title}
+          subtitle={result.message}
+          style={styles.feedbackHeader}
+        />
+        <PrimaryButton
+          title="Intentar de nuevo"
+          onPress={resetToIntro}
+          style={styles.feedbackButton}
+          accessibilityLabel="Intentar de nuevo"
+        />
+      </ScreenContainer>
     );
   }
 
   if (result && result.ok) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.resultBox}>
-          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            <Ionicons name="checkmark-circle" size={72} color={colors.secondary} />
-          </Animated.View>
-          <Text style={styles.resultTitle} allowFontScaling>
-            {result.title}
-          </Text>
-          <Text style={styles.resultBody} allowFontScaling>
-            {result.message}
-          </Text>
-          {result.subtitle ? (
-            <Text style={styles.resultSub} allowFontScaling>
-              {result.subtitle}
-            </Text>
-          ) : null}
-          <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} />
-        </View>
-      </SafeAreaView>
+      <ScreenContainer contentContainerStyle={styles.centeredContent}>
+        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+          <IconCircle color={colors.secondary} size={96}>
+            <Ionicons name="checkmark-circle" size={56} color={colors.secondary} />
+          </IconCircle>
+        </Animated.View>
+        <ScreenHeader
+          title={result.title}
+          subtitle={result.subtitle ? `${result.message}\n${result.subtitle}` : result.message}
+          style={styles.feedbackHeader}
+        />
+        <ActivityIndicator color={colors.primary} style={styles.successSpinner} />
+        <Text style={styles.successHint} allowFontScaling>
+          Redirigiendo…
+        </Text>
+      </ScreenContainer>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={styles.introContent}>
-        <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}18` }]}>
-          <Ionicons name="qr-code-outline" size={40} color={colors.primary} />
-        </View>
-        <Text style={styles.introTitle} allowFontScaling>
-          Vincular paciente
-        </Text>
-        <Text style={styles.introBody} allowFontScaling>
-          Pide al paciente que abra su perfil y muestre su código QR. Luego pulsa el botón y apunta la
-          cámara al código.
-        </Text>
-        <Pressable
-          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}
-          onPress={startScan}
-        >
-          <Ionicons name="camera-outline" size={22} color={colors.onPrimary} style={styles.btnIcon} />
-          <Text style={styles.primaryBtnText}>Escanear QR</Text>
-        </Pressable>
-      </View>
-    </SafeAreaView>
+    <ScreenContainer scroll animateEnter contentContainerStyle={styles.introContent}>
+      <IconCircle color={colors.primary} size={96}>
+        <Ionicons name="qr-code-outline" size={44} color={colors.primary} />
+      </IconCircle>
+      <ScreenHeader
+        title="Vincular paciente"
+        subtitle="Pide al paciente que abra su perfil y muestre su código QR. Luego escanea el código con la cámara."
+        style={styles.introHeader}
+      />
+      <PrimaryButton
+        title="Escanear QR"
+        icon="camera-outline"
+        onPress={startScan}
+        style={styles.scanButton}
+        accessibilityLabel="Escanear código QR del paciente"
+      />
+      <SecondaryButton
+        title="Cancelar"
+        appearance="outline"
+        onPress={() => navigation.goBack()}
+        style={styles.cancelIntroBtn}
+        accessibilityLabel="Cancelar y volver"
+      />
+    </ScreenContainer>
   );
 }
 
 function createStyles(colors) {
   return StyleSheet.create({
-    safe: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    centered: {
-      flex: 1,
+    centeredContent: {
+      flexGrow: 1,
+      paddingHorizontal: layout.screenPaddingH,
+      paddingVertical: layout.screenPaddingBottom,
       justifyContent: 'center',
       alignItems: 'center',
-      padding: spacing.xl,
+    },
+    loadingLabel: {
+      ...typography.body,
+      color: colors.textSecondary,
+      marginTop: spacing.m,
+    },
+    feedbackHeader: {
+      width: '100%',
+      maxWidth: layout.contentMaxWidth,
+      marginTop: spacing.l,
+      marginBottom: spacing.l,
+    },
+    feedbackButton: {
+      width: '100%',
+      maxWidth: layout.contentMaxWidth,
     },
     introContent: {
-      flex: 1,
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.xl,
-      alignItems: 'center',
-    },
-    iconCircle: {
-      width: 88,
-      height: 88,
-      borderRadius: 44,
-      alignItems: 'center',
+      flexGrow: 1,
+      paddingHorizontal: layout.screenPaddingH,
+      paddingTop: layout.screenPaddingTop,
+      paddingBottom: layout.screenPaddingBottom,
       justifyContent: 'center',
-      marginBottom: spacing.lg,
-    },
-    introTitle: {
-      fontSize: typography.title.fontSize,
-      fontWeight: '700',
-      color: colors.textPrimary,
-      textAlign: 'center',
-      marginBottom: spacing.md,
-    },
-    introBody: {
-      ...typography.body,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      lineHeight: typography.body.fontSize * 1.5,
-      marginBottom: spacing.xl,
-    },
-    introHint: {
-      ...typography.body,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      marginBottom: spacing.lg,
-    },
-    primaryBtn: {
-      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.primary,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.xl,
-      borderRadius: spacing.radiusButton,
-      minWidth: '88%',
     },
-    btnIcon: {
-      marginRight: spacing.sm,
+    introHeader: {
+      marginBottom: layout.sectionGap,
+      width: '100%',
+      maxWidth: layout.contentMaxWidth,
     },
-    primaryBtnText: {
-      fontSize: typography.body.fontSize,
-      fontWeight: '700',
-      color: colors.onPrimary,
+    scanButton: {
+      width: '100%',
+      maxWidth: layout.contentMaxWidth,
+      marginBottom: spacing.m,
     },
-    secondaryBtn: {
-      marginTop: spacing.lg,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.lg,
-    },
-    secondaryBtnText: {
-      fontSize: typography.body.fontSize,
-      fontWeight: '600',
-      color: colors.primary,
+    cancelIntroBtn: {
+      width: '100%',
+      maxWidth: layout.contentMaxWidth,
     },
     cameraRoot: {
       flex: 1,
-      backgroundColor: '#000',
+      backgroundColor: colors.cameraBackground,
     },
     overlay: {
       ...StyleSheet.absoluteFillObject,
       justifyContent: 'space-between',
       alignItems: 'center',
+      paddingTop: spacing.xxxl,
       paddingBottom: spacing.xl,
     },
     scanFrame: {
-      marginTop: 120,
       width: 260,
       height: 260,
       borderRadius: spacing.radiusLg,
       borderWidth: 3,
-      borderColor: 'rgba(255,255,255,0.85)',
-      backgroundColor: 'transparent',
+      borderColor: colors.scanFrameBorder,
     },
     scanHint: {
-      color: '#fff',
-      fontSize: typography.body.fontSize,
+      ...typography.body,
       fontWeight: '600',
+      color: colors.onCamera,
       textAlign: 'center',
       paddingHorizontal: spacing.lg,
-      textShadowColor: 'rgba(0,0,0,0.5)',
-      textShadowOffset: { width: 0, height: 1 },
-      textShadowRadius: 4,
     },
     cancelScanBtn: {
-      padding: spacing.lg,
+      marginBottom: spacing.l,
     },
-    cancelScanText: {
-      color: '#fff',
-      fontSize: typography.body.fontSize,
-      fontWeight: '600',
+    successSpinner: {
+      marginTop: spacing.l,
     },
-    resultBox: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: spacing.xl,
-    },
-    resultTitle: {
-      fontSize: typography.title.fontSize,
-      fontWeight: '700',
-      color: colors.textPrimary,
-      textAlign: 'center',
-      marginTop: spacing.lg,
-    },
-    resultBody: {
-      ...typography.body,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      marginTop: spacing.md,
-    },
-    resultSub: {
+    successHint: {
       ...typography.caption,
       color: colors.textSecondary,
-      textAlign: 'center',
-      marginTop: spacing.sm,
-    },
-    errorTitle: {
-      fontSize: typography.subtitle.fontSize,
-      fontWeight: '700',
-      color: colors.textPrimary,
-      marginTop: spacing.md,
-    },
-    errorBody: {
-      ...typography.body,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      marginTop: spacing.sm,
+      marginTop: spacing.m,
     },
   });
 }

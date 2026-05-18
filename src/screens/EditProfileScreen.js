@@ -4,25 +4,17 @@ import {
   Text,
   StyleSheet,
   Platform,
-  LayoutAnimation,
-  UIManager,
   Alert,
   StatusBar,
 } from 'react-native';
+import { configureLayoutAnimation } from '../utils/layoutAnimation';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/storage';
-import { Card, Input, Button, ScreenContainer } from '../components';
+import { Card, TextInputField, PrimaryButton, ScreenContainer } from '../components';
 import { spacing, typography, useTheme } from '../theme';
 import { updateUserProfile } from '../services/profileService';
-
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -66,7 +58,7 @@ export default function EditProfileScreen({ navigation }) {
   );
 
   const validate = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    configureLayoutAnimation();
     const next = {};
     if (!name.trim()) next.name = 'El nombre es obligatorio';
     if (!email.trim()) next.email = 'El correo es obligatorio';
@@ -113,11 +105,13 @@ export default function EditProfileScreen({ navigation }) {
       </Text>
 
       <Card style={styles.card}>
-        <Input
+        <TextInputField
           label="Nombre completo"
+          required
           containerStyle={styles.field}
           value={name}
           error={errors.name}
+          validationType="text"
           onChangeText={(t) => {
             setName(t);
             if (errors.name) setErrors((e) => ({ ...e, name: null }));
@@ -126,39 +120,40 @@ export default function EditProfileScreen({ navigation }) {
           accessibilityLabel="Nombre completo"
           style={styles.input}
         />
-        <Input
+        <TextInputField
           label="Correo electrónico"
+          required
           containerStyle={styles.field}
           value={email}
           error={errors.email}
+          validationType="email"
           onChangeText={(t) => {
             setEmail(t);
             if (errors.email) setErrors((e) => ({ ...e, email: null }));
           }}
           placeholder="nombre@correo.com"
-          keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
           accessibilityLabel="Correo electrónico"
           style={styles.input}
         />
-        <Input
+        <TextInputField
           label="Teléfono"
           containerStyle={styles.field}
           value={phone}
           error={errors.phone}
+          validationType="phone"
           onChangeText={(t) => {
             setPhone(t);
             if (errors.phone) setErrors((e) => ({ ...e, phone: null }));
           }}
           placeholder="Opcional — ej. +34 600 000 000"
-          keyboardType="phone-pad"
           accessibilityLabel="Teléfono"
           style={styles.input}
         />
       </Card>
 
-      <Button
+      <PrimaryButton
         title={saving ? 'Guardando…' : 'Guardar cambios'}
         onPress={handleSave}
         disabled={saving}

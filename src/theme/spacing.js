@@ -1,23 +1,25 @@
 /**
- * Espaciado — escala base 4px.
- * Valores pedidos: 4, 8, 12, 16, 24, 32 → xs, sm, s, md, lg, xl
- * Tokens extra para secciones y radios de componentes.
+ * Espaciado — base 8px, múltiplos de 4/8.
+ * Tokens principales: s, m, l, xl
  */
 export const spacing = {
   /** 4 */
   xs: 4,
-  /** 8 */
+  /** 8 — token `s` */
+  s: 8,
   sm: 8,
   /** 12 */
-  s: 12,
-  /** 16 — padding estándar de bloques */
+  s12: 12,
+  /** 16 — token `m` */
+  m: 16,
   md: 16,
-  /** 24 */
+  /** 24 — token `l` */
+  l: 24,
   lg: 24,
-  /** 32 */
+  /** 32 — token `xl` */
   xl: 32,
 
-  /** Mínimo recomendado (Apple HIG / accesibilidad táctil) */
+  /** Mínimo táctil WCAG / Apple HIG */
   minTouchTarget: 44,
 
   xxl: 40,
@@ -25,13 +27,11 @@ export const spacing = {
   section: 40,
   screen: 48,
 
-  /** Radios (16–24px, UI tipo SaaS) */
-  radiusInput: 14,
-  radiusButton: 16,
-  radiusCard: 16,
-  radiusLg: 20,
+  radiusInput: 8,
+  radiusButton: 8,
+  radiusCard: 12,
+  radiusLg: 16,
   radiusXl: 24,
 
-  /** Legado: opacidad sombra en tarjetas (iOS) */
   shadowOpacityCard: 0.08,
 };

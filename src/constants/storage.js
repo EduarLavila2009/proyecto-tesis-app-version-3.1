@@ -22,6 +22,14 @@ export const STORAGE_KEYS = {
    * Formato: array de { patientId, doctorId, createdAt }
    */
   DOCTOR_PATIENT_LINKS: 'medical_corp_doctor_patient_links',
+  /** Recordatorios locales (medición, medicación) por userId */
+  REMINDERS: 'medical_corp_reminders_v1',
+  /** Eventos de agenda / calendario básico */
+  AGENDA_EVENTS: 'medical_corp_agenda_v1',
+  /** Notas clínicas del médico por paciente */
+  MEDICAL_NOTES: 'medical_corp_medical_notes_v1',
+  /** IDs de notificaciones programadas (recordatorios) */
+  SCHEDULED_NOTIFICATIONS: 'medical_corp_scheduled_notifications_v1',
 };
 
 export const ROLES = {

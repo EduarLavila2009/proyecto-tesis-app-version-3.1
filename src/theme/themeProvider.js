@@ -6,24 +6,16 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import {
-  LayoutAnimation,
-  Platform,
-  UIManager,
-} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SystemUI from 'expo-system-ui';
 import { STORAGE_KEYS } from '../constants/storage';
+import { configureLayoutAnimation } from '../utils/layoutAnimation';
 import { lightColors, darkColors } from './colors';
+import { typography, fontFamily } from './typography';
+import { spacing } from './spacing';
 import { getCardShadow, getSoftShadow } from './shadows';
 
 const ThemeContext = createContext(null);
-
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 export function ThemeProvider({ children }) {
   const [mode, setModeState] = useState('light');
@@ -47,7 +39,8 @@ export function ThemeProvider({ children }) {
 
   const setMode = useCallback(async (next) => {
     const m = next === 'dark' ? 'dark' : 'light';
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    // Sin UIManager.setLayoutAnimationEnabledExperimental (no-op en New Architecture).
+    configureLayoutAnimation();
     setModeState(m);
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.THEME, m);
@@ -69,11 +62,18 @@ export function ThemeProvider({ children }) {
   const cardShadow = useMemo(() => getCardShadow(colors), [colors]);
   const softShadow = useMemo(() => getSoftShadow(colors), [colors]);
 
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(colors.background).catch(() => {});
+  }, [colors.background]);
+
   const value = useMemo(
     () => ({
       mode,
       isDark,
       colors,
+      typography,
+      spacing,
+      fontFamily,
       cardShadow,
       softShadow,
       setMode,

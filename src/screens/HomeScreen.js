@@ -1,11 +1,19 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
-import { Card, Header, PressableScale, Icon, MedicalAlertBanner } from '../components';
-import { spacing, typography, useTheme } from '../theme';
+import {
+  Card,
+  PrimaryButton,
+  SecondaryButton,
+  MedicalAlertBanner,
+  TabScreenLayout,
+  Icon,
+  MetricTile,
+} from '../components';
+import { spacing, typography, layout, useTheme } from '../theme';
+import { useMetricsGridLayout } from '../hooks/useMetricsGridLayout';
 import {
   evaluateMonitoringAlert,
   isAlertStatus,
@@ -15,7 +23,7 @@ import {
   SIM_SPO2,
   SIM_TEMP_C,
 } from '../utils/vitalsMonitoring';
-import { recordMedicalAlert } from '../services/alertsService';
+import { processVitalsAlert } from '../services/vitalsMonitorService';
 import { getLatestMedicalRecord } from '../services/medicalRecordsService';
 
 /** Misma entrada demo que la primera fila del historial clínico simulado (solo UI). */
@@ -40,10 +48,10 @@ function statusSubtitle(level) {
 export default function HomeScreen({ navigation }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const insets = useSafeAreaInsets();
   const [roleKey, setRoleKey] = useState(ROLES.PATIENT);
   const [userName, setUserName] = useState('');
   const [userId, setUserId] = useState(null);
+  const [vitalsAlertsEnabled, setVitalsAlertsEnabled] = useState(true);
   const [vitals, setVitals] = useState({
     heartRate: SIM_HEART_RATE_BPM,
     temperature: SIM_TEMP_C,
@@ -67,6 +75,7 @@ export default function HomeScreen({ navigation }) {
               const u = JSON.parse(userRaw);
               if (u?.name) setUserName(String(u.name));
               if (u?.id) setUserId(String(u.id));
+              setVitalsAlertsEnabled(u?.notificationPrefs?.vitalsAlerts !== false);
 
               // Cargar última medición guardada (si existe)
               if (u?.id) {
@@ -117,35 +126,65 @@ export default function HomeScreen({ navigation }) {
 
   const statusBg = alertActive ? `${colors.danger}14` : colors.secondaryMuted;
   const statusIconName = alertActive ? 'medical' : 'heart';
+  const { gridStyle, tileWidth } = useMetricsGridLayout();
+
+  const metricItems = useMemo(
+    () => [
+      {
+        id: 'hr',
+        icon: 'heart',
+        value: `${vitals.heartRate} bpm`,
+        label: 'Ritmo cardíaco',
+        insight: 'En reposo suele estar entre 60 y 100 bpm.',
+      },
+      {
+        id: 'temp',
+        icon: 'temperature',
+        value: `${vitals.temperature.toFixed(1)} °C`,
+        label: 'Temperatura',
+        insight: 'Rango habitual adulto: ~36,1–37,2 °C.',
+      },
+      {
+        id: 'bp',
+        icon: 'blood',
+        value: bpLabel,
+        label: 'Presión arterial',
+        insight: 'Ideal medir en reposo, mismo brazo.',
+      },
+      {
+        id: 'spo2',
+        icon: 'lungs',
+        value: `${vitals.oxygen}%`,
+        label: 'Oxígeno (SpO₂)',
+        insight: 'Por encima de 95% suele considerarse adecuado.',
+      },
+    ],
+    [vitals, bpLabel]
+  );
 
   useFocusEffect(
     useCallback(() => {
-      if (!alertActive) return;
-      recordMedicalAlert({
-        level: status.level,
-        title: status.title,
-        subtitle: status.subtitle,
-        reasons: status.reasons,
-        vitals: {
-          heartRate: vitals.heartRate,
-          systolic: vitals.systolic,
-          diastolic: vitals.diastolic,
-          spo2: vitals.oxygen,
-        },
+      if (!alertActive || !vitalsAlertsEnabled) return;
+      processVitalsAlert({
+        heartRate: vitals.heartRate,
+        systolic: vitals.systolic,
+        diastolic: vitals.diastolic,
+        spo2: vitals.oxygen,
+        patientId: userId,
+        patientName: userName || null,
+        notifyLocal: true,
       }).catch(() => {});
-    }, [alertActive, status.level, status.title, status.subtitle, status.reasons, vitals])
+    }, [
+      alertActive,
+      vitalsAlertsEnabled,
+      userId,
+      userName,
+      vitals,
+    ])
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingBottom: spacing.xl + spacing.lg + spacing.md + insets.bottom },
-        ]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
+    <TabScreenLayout scrollProps={{ showsVerticalScrollIndicator: false }}>
         {/* 1) Header superior */}
         <View style={styles.topHeader}>
           <View style={styles.topHeaderText}>
@@ -169,10 +208,10 @@ export default function HomeScreen({ navigation }) {
           />
         ) : null}
 
-        {/* 2) Tarjeta principal: estado general */}
+        {/* Estado general — fondo secondaryMuted (estable) o danger suave (alerta) */}
         <Card style={[styles.statusCard, { backgroundColor: statusBg }]}>
           <Text style={styles.statusCardLabel} allowFontScaling>
-            Estado general
+            ESTADO GENERAL
           </Text>
           <View style={styles.statusCardContent}>
             <View style={styles.statusIconWrap} pointerEvents="none">
@@ -189,7 +228,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </Card>
 
-        {/* 3) Métricas: grid 2x2 */}
+        {/* Métricas — grid responsive 2×2 / 1 columna */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle} allowFontScaling>
             Métricas
@@ -199,54 +238,18 @@ export default function HomeScreen({ navigation }) {
           </Text>
         </View>
 
-        <View style={styles.metricsGrid}>
-          <Card style={styles.metricCard}>
-            <View style={styles.metricIcon} pointerEvents="none">
-              <Icon name="heart" size={22} color={colors.primary} />
-            </View>
-            <Text style={styles.metricValue} allowFontScaling>
-              {vitals.heartRate} bpm
-            </Text>
-            <Text style={styles.metricLabel} allowFontScaling>
-              Ritmo cardíaco
-            </Text>
-          </Card>
-
-          <Card style={styles.metricCard}>
-            <View style={styles.metricIcon} pointerEvents="none">
-              <Icon name="temperature" size={22} color={colors.primary} />
-            </View>
-            <Text style={styles.metricValue} allowFontScaling>
-              {vitals.temperature.toFixed(1)}°C
-            </Text>
-            <Text style={styles.metricLabel} allowFontScaling>
-              Temperatura
-            </Text>
-          </Card>
-
-          <Card style={styles.metricCard}>
-            <View style={styles.metricIcon} pointerEvents="none">
-              <Icon name="blood" size={22} color={colors.primary} />
-            </View>
-            <Text style={styles.metricValue} allowFontScaling>
-              {bpLabel}
-            </Text>
-            <Text style={styles.metricLabel} allowFontScaling>
-              Presión
-            </Text>
-          </Card>
-
-          <Card style={styles.metricCard}>
-            <View style={styles.metricIcon} pointerEvents="none">
-              <Icon name="lungs" size={22} color={colors.primary} />
-            </View>
-            <Text style={styles.metricValue} allowFontScaling>
-              {vitals.oxygen}%
-            </Text>
-            <Text style={styles.metricLabel} allowFontScaling>
-              Oxígeno
-            </Text>
-          </Card>
+        <View style={[styles.metricsGrid, gridStyle]}>
+          {metricItems.map((item) => (
+            <MetricTile
+              key={item.id}
+              icon={item.icon}
+              value={item.value}
+              label={item.label}
+              insight={item.insight}
+              width={tileWidth}
+              onPress={() => navigation.navigate(historyTarget)}
+            />
+          ))}
         </View>
 
         {/* 4) Acciones: botones modernos */}
@@ -255,37 +258,21 @@ export default function HomeScreen({ navigation }) {
         </Text>
 
         <View style={styles.actionsRow}>
-          <PressableScale
-            containerStyle={styles.actionHalf}
-            style={[styles.actionBtn, styles.actionPrimary]}
+          <PrimaryButton
+            title="Ver historial"
+            icon="calendar-outline"
             onPress={() => navigation.navigate(historyTarget)}
-            accessibilityRole="button"
+            style={styles.actionHalf}
             accessibilityLabel="Ver historial"
-          >
-            <View style={styles.actionBtnInner} pointerEvents="none">
-              <Icon name="calendar" size={18} color={colors.onPrimary} />
-              <Text style={styles.actionPrimaryText} allowFontScaling>
-                Ver historial
-              </Text>
-            </View>
-          </PressableScale>
-
+          />
           <View style={styles.actionGap} />
-
-          <PressableScale
-            containerStyle={styles.actionHalf}
-            style={[styles.actionBtn, styles.actionSecondary]}
+          <SecondaryButton
+            title="IA médica"
+            icon="sparkles-outline"
             onPress={() => navigation.navigate('MedicalAI')}
-            accessibilityRole="button"
+            style={styles.actionHalf}
             accessibilityLabel="IA médica"
-          >
-            <View style={styles.actionBtnInner} pointerEvents="none">
-              <Icon name="ai" size={18} color={colors.primary} />
-              <Text style={styles.actionSecondaryText} allowFontScaling>
-                IA médica
-              </Text>
-            </View>
-          </PressableScale>
+          />
         </View>
 
         {/* 5) Insight */}
@@ -316,22 +303,12 @@ export default function HomeScreen({ navigation }) {
         <Text style={styles.footerHint} allowFontScaling>
           MEDICAL corp · Información orientativa, no sustituye la consulta médica.
         </Text>
-      </ScrollView>
-    </SafeAreaView>
+    </TabScreenLayout>
   );
 }
 
 function createStyles(colors) {
   return StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-  },
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -368,16 +345,13 @@ function createStyles(colors) {
   },
 
   statusCard: {
-    borderRadius: spacing.radiusCard,
-    padding: spacing.lg,
-    marginBottom: spacing.xl,
+    marginBottom: layout.sectionGap,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   statusCardLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: '700',
+    ...typography.label,
     color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
     marginBottom: spacing.md,
   },
   statusCardContent: {
@@ -436,35 +410,7 @@ function createStyles(colors) {
   },
 
   metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  metricCard: {
-    width: '48%',
-    padding: spacing.lg,
-  },
-  metricIcon: {
-    width: spacing.xl,
-    height: spacing.xl,
-    borderRadius: spacing.radiusButton,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  metricValue: {
-    fontSize: typography.subtitle.fontSize + 2,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-    letterSpacing: -0.2,
-  },
-  metricLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: typography.caption.fontWeight,
-    color: colors.textSecondary,
+    marginBottom: layout.sectionGap,
   },
 
   actionsRow: {
@@ -476,43 +422,7 @@ function createStyles(colors) {
     flex: 1,
   },
   actionGap: {
-    width: spacing.md,
-  },
-  actionBtn: {
-    width: '100%',
-    minHeight: spacing.xl + spacing.md,
-    borderRadius: spacing.radiusButton,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  actionBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  actionPrimary: {
-    backgroundColor: colors.primary,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: spacing.xs },
-    shadowRadius: spacing.md,
-    elevation: spacing.xs,
-  },
-  actionPrimaryText: {
-    fontSize: typography.body.fontSize,
-    fontWeight: '700',
-    color: colors.onPrimary,
-  },
-  actionSecondary: {
-    backgroundColor: colors.surface,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  actionSecondaryText: {
-    fontSize: typography.body.fontSize,
-    fontWeight: '700',
-    color: colors.primary,
+    width: spacing.m,
   },
 
   insightCard: {

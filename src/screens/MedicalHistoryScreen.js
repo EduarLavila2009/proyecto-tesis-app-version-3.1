@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   FlatList,
   KeyboardAvoidingView,
@@ -12,10 +11,41 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHeaderHeight } from '@react-navigation/elements';
+import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES, DEFAULT_MEDICAL_HISTORY } from '../constants/storage';
-import { Header, Card, Button } from '../components';
-import { spacing, typography, useTheme } from '../theme';
+import {
+  Card,
+  PrimaryButton,
+  SecondaryButton,
+  TextInputField,
+  DropdownSelect,
+  FormPanel,
+  MetricTile,
+  HistoryRecordCard,
+} from '../components';
+
+const BLOOD_TYPE_OPTIONS = [
+  { label: 'O+', value: 'O+' },
+  { label: 'O-', value: 'O-' },
+  { label: 'A+', value: 'A+' },
+  { label: 'A-', value: 'A-' },
+  { label: 'B+', value: 'B+' },
+  { label: 'B-', value: 'B-' },
+  { label: 'AB+', value: 'AB+' },
+  { label: 'AB-', value: 'AB-' },
+];
+import {
+  spacing,
+  typography,
+  layout,
+  useTheme,
+  createSectionHeadingStyle,
+  createCardTitleStyle,
+  createFieldGroupStyle,
+} from '../theme';
+import { useMetricsGridLayout } from '../hooks/useMetricsGridLayout';
+import { evaluateMonitoringAlert } from '../utils/vitalsMonitoring';
 import {
   addMedicalRecord,
   getMedicalRecordsByUser,
@@ -27,13 +57,25 @@ function formatRecordDate(iso) {
   return d.toLocaleString();
 }
 
+function alertLevelForMetric(reasons, prefix) {
+  if (!reasons?.length) return undefined;
+  const related = reasons.filter((r) => r.code.startsWith(prefix));
+  if (related.some((r) => r.severity === 'critical')) return 'critical';
+  if (related.some((r) => r.severity === 'warning')) return 'warning';
+  return undefined;
+}
+
 /**
  * Historial médico - Solo rol Paciente
  * Carga y edita el historial del usuario actual. Guarda en AsyncStorage.
  */
 export default function MedicalHistoryScreen() {
+  const navigation = useNavigation();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { gridStyle, tileWidth } = useMetricsGridLayout();
+  const listRef = useRef(null);
+
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [medicalRecords, setMedicalRecords] = useState([]);
@@ -43,7 +85,6 @@ export default function MedicalHistoryScreen() {
   const [medications, setMedications] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Inputs para registrar nuevas métricas (demo local sin hardware)
   const [heartRateInput, setHeartRateInput] = useState('');
   const [temperatureInput, setTemperatureInput] = useState('');
   const [bpSystolicInput, setBpSystolicInput] = useState('');
@@ -54,6 +95,76 @@ export default function MedicalHistoryScreen() {
   const insets = useSafeAreaInsets();
   const keyboardVerticalOffset =
     headerHeight + (Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0);
+
+  const latestRecord = medicalRecords[0] ?? null;
+
+  const latestVitals = useMemo(() => {
+    if (!latestRecord) return null;
+    const systolic = latestRecord?.bloodPressure?.systolic;
+    const diastolic = latestRecord?.bloodPressure?.diastolic;
+    return {
+      heartRate: latestRecord.heartRate,
+      temperature: latestRecord.temperature,
+      systolic,
+      diastolic,
+      oxygen: latestRecord.oxygen,
+      bpLabel:
+        typeof systolic === 'number' && typeof diastolic === 'number'
+          ? `${systolic}/${diastolic}`
+          : '—',
+    };
+  }, [latestRecord]);
+
+  const latestAlertStatus = useMemo(() => {
+    if (!latestVitals) return null;
+    const { heartRate, systolic, diastolic, oxygen } = latestVitals;
+    if (
+      typeof heartRate !== 'number' ||
+      typeof systolic !== 'number' ||
+      typeof diastolic !== 'number'
+    ) {
+      return null;
+    }
+    return evaluateMonitoringAlert(heartRate, systolic, diastolic, oxygen);
+  }, [latestVitals]);
+
+  const latestMetricTiles = useMemo(() => {
+    if (!latestVitals) return [];
+    const reasons = latestAlertStatus?.reasons ?? [];
+    const temp =
+      typeof latestVitals.temperature === 'number'
+        ? `${latestVitals.temperature.toFixed(1)} °C`
+        : '—';
+    return [
+      {
+        id: 'hr',
+        icon: 'heart',
+        value: `${latestVitals.heartRate ?? '—'} bpm`,
+        label: 'Ritmo cardíaco',
+        alertLevel: alertLevelForMetric(reasons, 'HR_'),
+      },
+      {
+        id: 'temp',
+        icon: 'temperature',
+        value: temp,
+        label: 'Temperatura',
+      },
+      {
+        id: 'bp',
+        icon: 'blood',
+        value: latestVitals.bpLabel,
+        label: 'Presión arterial',
+        alertLevel: alertLevelForMetric(reasons, 'BP_'),
+      },
+      {
+        id: 'spo2',
+        icon: 'lungs',
+        value: `${latestVitals.oxygen ?? '—'}%`,
+        label: 'Oxígeno (SpO₂)',
+        alertLevel: alertLevelForMetric(reasons, 'SPO2_'),
+      },
+    ];
+  }, [latestVitals, latestAlertStatus]);
 
   useEffect(() => {
     loadUserAndHistory();
@@ -185,265 +296,274 @@ export default function MedicalHistoryScreen() {
     oxygenInput,
   ]);
 
-  const renderRecord = useCallback(({ item }) => {
-    const systolic = item?.bloodPressure?.systolic;
-    const diastolic = item?.bloodPressure?.diastolic;
-    const bpText =
-      typeof systolic === 'number' && typeof diastolic === 'number'
-        ? `${systolic}/${diastolic}`
-        : '—';
+  const scrollToRecords = useCallback(() => {
+    if (medicalRecords.length === 0) {
+      Alert.alert(
+        'Sin registros',
+        'Aún no hay mediciones guardadas. Agrega una medición más abajo.'
+      );
+      return;
+    }
+    listRef.current?.scrollToIndex({ index: 0, animated: true, viewOffset: spacing.sm });
+  }, [medicalRecords.length]);
 
-    return (
-      <View style={styles.cardSpacing}>
-        <Card style={styles.recordCard}>
-          <Text style={styles.recordDate} allowFontScaling>
-            {formatRecordDate(item.date)}
-          </Text>
-          <Text style={styles.recordDescription} allowFontScaling>
-            FC: {item.heartRate ?? '—'} bpm
-          </Text>
-          <Text style={styles.recordDescription} allowFontScaling>
-            Temp:{' '}
-            {typeof item.temperature === 'number' ? item.temperature.toFixed(1) : '—'} °C
-          </Text>
-          <Text style={styles.recordDescription} allowFontScaling>
-            Presión: {bpText} mmHg
-          </Text>
-          <Text style={styles.recordDescription} allowFontScaling>
-            SpO₂: {item.oxygen ?? '—'}%
-          </Text>
-        </Card>
-      </View>
-    );
-  }, [styles]);
+  const renderRecord = useCallback(
+    ({ item }) => {
+      const systolic = item?.bloodPressure?.systolic;
+      const diastolic = item?.bloodPressure?.diastolic;
+      const bpText =
+        typeof systolic === 'number' && typeof diastolic === 'number'
+          ? `${systolic}/${diastolic}`
+          : '—';
+
+      const alertStatus =
+        typeof item.heartRate === 'number' &&
+        typeof systolic === 'number' &&
+        typeof diastolic === 'number'
+          ? evaluateMonitoringAlert(item.heartRate, systolic, diastolic, item.oxygen)
+          : null;
+
+      return (
+        <HistoryRecordCard
+          dateLabel={formatRecordDate(item.date)}
+          heartRate={item.heartRate}
+          temperature={item.temperature}
+          bloodPressureText={bpText}
+          oxygen={item.oxygen}
+          source={item.source}
+          alertStatus={alertStatus}
+        />
+      );
+    },
+    []
+  );
 
   const listHeader = useCallback(
     () => (
       <View style={styles.listHeader}>
-        <Header
-          title="Historial de métricas"
-          style={styles.headerBlock}
-          textStyle={styles.headerTitle}
-        />
-        <Text style={styles.sectionLabel} allowFontScaling>
-          Mediciones guardadas en este dispositivo
+        <Text style={styles.pageTitle} allowFontScaling accessibilityRole="header">
+          Historial y métricas
         </Text>
+        <Text style={styles.sectionLabel} allowFontScaling>
+          Mediciones y ficha clínica en este dispositivo
+        </Text>
+
+        <View style={styles.quickActionsRow}>
+          <PrimaryButton
+            title="Ver historial completo"
+            icon="list-outline"
+            onPress={scrollToRecords}
+            style={styles.quickActionBtn}
+            accessibilityLabel="Ver historial completo de mediciones"
+          />
+          <View style={styles.quickActionGap} />
+          <SecondaryButton
+            title="IA médica"
+            icon="sparkles-outline"
+            onPress={() => navigation.navigate('MedicalAI')}
+            style={styles.quickActionBtn}
+            accessibilityLabel="Abrir asistente de IA médica"
+          />
+        </View>
+
+        <Text style={styles.sectionHeading} allowFontScaling>
+          Métricas vitales
+        </Text>
+        <Text style={styles.sectionHint} allowFontScaling>
+          {latestRecord
+            ? `Última medición · ${formatRecordDate(latestRecord.date)}`
+            : 'Sin mediciones — agrega la primera más abajo'}
+        </Text>
+
+        {latestMetricTiles.length > 0 ? (
+          <View style={[styles.metricsGrid, gridStyle]}>
+            {latestMetricTiles.map((tile) => (
+              <MetricTile
+                key={tile.id}
+                icon={tile.icon}
+                value={tile.value}
+                label={tile.label}
+                width={tileWidth}
+                alertLevel={tile.alertLevel}
+              />
+            ))}
+          </View>
+        ) : (
+          <Card style={styles.emptyVitalsCard}>
+            <Text style={styles.emptyVitalsText} allowFontScaling>
+              Registra una medición para ver FC, temperatura, presión y oxígeno aquí.
+            </Text>
+          </Card>
+        )}
+
+        <Text style={[styles.sectionHeading, styles.recordsHeading]} allowFontScaling>
+          Últimos registros
+        </Text>
+        {medicalRecords.length === 0 ? (
+          <Text style={styles.emptyRecordsHint} allowFontScaling>
+            No hay registros todavía.
+          </Text>
+        ) : null}
       </View>
     ),
-    [styles]
+    [
+      styles,
+      scrollToRecords,
+      navigation,
+      latestRecord,
+      latestMetricTiles,
+      gridStyle,
+      tileWidth,
+      medicalRecords.length,
+    ]
   );
 
   const listFooter = useCallback(
     () => (
       <View style={styles.footer}>
-        <Text style={styles.sectionLabel} allowFontScaling>
-          Agregar nueva medición
-        </Text>
+        <FormPanel title="Agregar nueva medición">
+          <TextInputField
+            label="Ritmo cardíaco (bpm)"
+            containerStyle={styles.fieldGroup}
+            placeholder="Ej. 82"
+            value={heartRateInput}
+            onChangeText={setHeartRateInput}
+            validationType="number"
+            accessibilityLabel="Campo ritmo cardíaco"
+          />
 
-        <View style={styles.form}>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
-              Ritmo cardíaco (bpm)
-            </Text>
-            <TextInput
-              style={styles.input}
-              selectionColor={colors.primary}
-              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
-              placeholder="Ej. 82"
-              placeholderTextColor={colors.textPlaceholder}
-              value={heartRateInput}
-              onChangeText={setHeartRateInput}
-              keyboardType="numeric"
-              accessibilityLabel="Campo ritmo cardíaco"
-              allowFontScaling
-            />
-          </View>
+          <TextInputField
+            label="Temperatura (°C)"
+            containerStyle={styles.fieldGroup}
+            placeholder="Ej. 36.6"
+            value={temperatureInput}
+            onChangeText={setTemperatureInput}
+            validationType="number"
+            accessibilityLabel="Campo temperatura"
+          />
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
-              Temperatura (°C)
-            </Text>
-            <TextInput
-              style={styles.input}
-              selectionColor={colors.primary}
-              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
-              placeholder="Ej. 36.6"
-              placeholderTextColor={colors.textPlaceholder}
-              value={temperatureInput}
-              onChangeText={setTemperatureInput}
-              keyboardType="numeric"
-              accessibilityLabel="Campo temperatura"
-              allowFontScaling
-            />
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
+            <Text style={styles.sectionFieldLabel} allowFontScaling>
               Presión arterial (PA)
             </Text>
             <View style={styles.bpRow}>
-              <TextInput
-                style={[styles.input, styles.bpInput]}
-                selectionColor={colors.primary}
-                {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
+              <TextInputField
+                containerStyle={styles.bpField}
                 placeholder="Sistólica"
-                placeholderTextColor={colors.textPlaceholder}
                 value={bpSystolicInput}
                 onChangeText={setBpSystolicInput}
-                keyboardType="numeric"
+                validationType="number"
                 accessibilityLabel="Campo sistólica"
-                allowFontScaling
               />
               <Text style={styles.bpSlash} allowFontScaling>
                 /
               </Text>
-              <TextInput
-                style={[styles.input, styles.bpInput]}
-                selectionColor={colors.primary}
-                {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
+              <TextInputField
+                containerStyle={styles.bpField}
                 placeholder="Diastólica"
-                placeholderTextColor={colors.textPlaceholder}
                 value={bpDiastolicInput}
                 onChangeText={setBpDiastolicInput}
-                keyboardType="numeric"
+                validationType="number"
                 accessibilityLabel="Campo diastólica"
-                allowFontScaling
               />
             </View>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
-              Oxígeno (SpO₂ %)
-            </Text>
-            <TextInput
-              style={styles.input}
-              selectionColor={colors.primary}
-              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
-              placeholder="Ej. 98"
-              placeholderTextColor={colors.textPlaceholder}
-              value={oxygenInput}
-              onChangeText={setOxygenInput}
-              keyboardType="numeric"
-              accessibilityLabel="Campo oxígeno"
-              allowFontScaling
-            />
-          </View>
+          <TextInputField
+            label="Oxígeno (SpO₂ %)"
+            containerStyle={styles.fieldGroup}
+            placeholder="Ej. 98"
+            value={oxygenInput}
+            onChangeText={setOxygenInput}
+            validationType="number"
+            accessibilityLabel="Campo oxígeno"
+          />
 
-          <Button
+          <PrimaryButton
             title="Guardar medición"
             onPress={handleAddMeasurement}
             style={styles.saveButton}
             accessibilityLabel="Guardar nueva medición"
           />
-        </View>
+        </FormPanel>
 
-        <Text style={styles.sectionLabel} allowFontScaling>
+        <Text style={styles.sectionHeading} allowFontScaling>
           Ficha clínica
         </Text>
 
-        <View style={styles.idBlock}>
+        <Card style={styles.idCard}>
+          <Text style={styles.cardBlockTitle} allowFontScaling>
+            Identificación
+          </Text>
           <Text style={styles.idLabel} allowFontScaling>
             ID del paciente
           </Text>
           <Text style={styles.idValue} allowFontScaling>
             {user?.id || '—'}
           </Text>
-        </View>
+        </Card>
 
-        <View style={styles.form}>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
-              Tipo de sangre
-            </Text>
-            <TextInput
-              style={styles.input}
-              selectionColor={colors.primary}
-              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
-              placeholder="Ej. O+, A-, B+"
-              placeholderTextColor={colors.textPlaceholder}
-              value={bloodType}
-              onChangeText={setBloodType}
-              accessibilityLabel="Campo de tipo de sangre"
-              allowFontScaling
-            />
-          </View>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
-              Alergias
-            </Text>
-            <TextInput
-              style={[styles.input, styles.inputMultiline]}
-              selectionColor={colors.primary}
-              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
-              placeholder="Alergias conocidas"
-              placeholderTextColor={colors.textPlaceholder}
-              value={allergies}
-              onChangeText={setAllergies}
-              multiline
-              accessibilityLabel="Campo de alergias"
-              allowFontScaling
-            />
-          </View>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
-              Enfermedades crónicas
-            </Text>
-            <TextInput
-              style={[styles.input, styles.inputMultiline]}
-              selectionColor={colors.primary}
-              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
-              placeholder="Enfermedades crónicas"
-              placeholderTextColor={colors.textPlaceholder}
-              value={chronicDiseases}
-              onChangeText={setChronicDiseases}
-              multiline
-              accessibilityLabel="Campo de enfermedades crónicas"
-              allowFontScaling
-            />
-          </View>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
-              Medicamentos actuales
-            </Text>
-            <TextInput
-              style={[styles.input, styles.inputMultiline]}
-              selectionColor={colors.primary}
-              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
-              placeholder="Medicamentos que toma actualmente"
-              placeholderTextColor={colors.textPlaceholder}
-              value={medications}
-              onChangeText={setMedications}
-              multiline
-              accessibilityLabel="Campo de medicamentos actuales"
-              allowFontScaling
-            />
-          </View>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label} allowFontScaling>
-              Notas adicionales
-            </Text>
-            <TextInput
-              style={[styles.input, styles.inputMultiline]}
-              selectionColor={colors.primary}
-              {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
-              placeholder="Otras observaciones"
-              placeholderTextColor={colors.textPlaceholder}
-              value={notes}
-              onChangeText={setNotes}
-              multiline
-              accessibilityLabel="Campo de notas adicionales"
-              allowFontScaling
-            />
-          </View>
+        <FormPanel title="Datos clínicos">
+          <DropdownSelect
+            label="Tipo de sangre"
+            containerStyle={styles.fieldGroup}
+            placeholder="Selecciona tipo de sangre"
+            options={BLOOD_TYPE_OPTIONS}
+            value={bloodType}
+            onValueChange={setBloodType}
+            accessibilityLabel="Tipo de sangre"
+          />
+          <TextInputField
+            label="Alergias"
+            containerStyle={styles.fieldGroup}
+            placeholder="Alergias conocidas"
+            value={allergies}
+            onChangeText={setAllergies}
+            multiline
+            numberOfLines={3}
+            accessibilityLabel="Campo de alergias"
+          />
+          <TextInputField
+            label="Enfermedades crónicas"
+            containerStyle={styles.fieldGroup}
+            placeholder="Enfermedades crónicas"
+            value={chronicDiseases}
+            onChangeText={setChronicDiseases}
+            multiline
+            numberOfLines={3}
+            accessibilityLabel="Campo de enfermedades crónicas"
+          />
+        </FormPanel>
 
-          <Button
+        <FormPanel title="Tratamiento y notas">
+          <TextInputField
+            label="Medicamentos actuales"
+            containerStyle={styles.fieldGroup}
+            placeholder="Medicamentos que toma actualmente"
+            value={medications}
+            onChangeText={setMedications}
+            multiline
+            numberOfLines={3}
+            accessibilityLabel="Campo de medicamentos actuales"
+          />
+          <TextInputField
+            label="Notas adicionales"
+            containerStyle={styles.fieldGroup}
+            placeholder="Otras observaciones"
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            numberOfLines={3}
+            accessibilityLabel="Campo de notas adicionales"
+          />
+
+          <PrimaryButton
             title="Guardar cambios"
             onPress={handleSave}
             style={styles.saveButton}
             accessibilityLabel="Guardar cambios del historial médico"
           />
-        </View>
+        </FormPanel>
       </View>
     ),
     [
@@ -461,7 +581,6 @@ export default function MedicalHistoryScreen() {
       oxygenInput,
       handleAddMeasurement,
       styles,
-      colors,
     ]
   );
 
@@ -498,6 +617,7 @@ export default function MedicalHistoryScreen() {
     >
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <FlatList
+          ref={listRef}
           data={medicalRecords}
           keyExtractor={(item) => item.id}
           renderItem={renderRecord}
@@ -516,18 +636,21 @@ export default function MedicalHistoryScreen() {
             bpDiastolicInput,
             oxygenInput,
             medicalRecords,
+            latestMetricTiles,
           }}
           contentContainerStyle={[
             styles.listContent,
             {
-              paddingBottom:
-                spacing.xl + spacing.lg + spacing.md + insets.bottom,
+              paddingBottom: spacing.xl + spacing.lg + spacing.md + insets.bottom,
             },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           initialNumToRender={8}
+          onScrollToIndexFailed={() => {
+            listRef.current?.scrollToOffset({ offset: 320, animated: true });
+          }}
         />
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -535,151 +658,142 @@ export default function MedicalHistoryScreen() {
 }
 
 function createStyles(colors) {
+  const fieldGroup = createFieldGroupStyle();
+
   return StyleSheet.create({
-  keyboardOuter: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  listContent: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-  },
-  listHeader: {
-    marginBottom: spacing.sm,
-  },
-  headerBlock: {
-    marginBottom: spacing.md,
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    fontSize: typography.title.fontSize,
-    fontWeight: typography.title.fontWeight,
-    color: colors.textPrimary,
-    textAlign: 'left',
-    width: '100%',
-  },
-  sectionLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: spacing.sm,
-  },
-  cardSpacing: {
-    marginBottom: spacing.sm,
-  },
-  recordCard: {
-    width: '100%',
-    padding: spacing.lg,
-    backgroundColor: colors.surface,
-  },
-  recordDate: {
-    fontSize: typography.subtitle.fontSize,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  recordDescription: {
-    fontSize: typography.body.fontSize,
-    fontWeight: typography.body.fontWeight,
-    color: colors.textSecondary,
-    lineHeight: typography.body.fontSize * 1.45,
-  },
-  footer: {
-    marginTop: spacing.lg,
-    paddingTop: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  loadingText: {
-    fontSize: typography.body.fontSize,
-    fontWeight: typography.body.fontWeight,
-    color: colors.textSecondary,
-  },
-  forbiddenText: {
-    fontSize: typography.body.fontSize,
-    fontWeight: typography.body.fontWeight,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  idBlock: {
-    marginBottom: spacing.lg,
-    padding: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: spacing.radiusCard,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  idLabel: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  idValue: {
-    fontSize: typography.subtitle.fontSize,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  form: {
-    paddingBottom: spacing.md,
-  },
-  fieldGroup: {
-    marginBottom: spacing.md,
-  },
-  label: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  input: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: typography.body.fontWeight,
-    backgroundColor: colors.surface,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: spacing.radiusInput,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    color: colors.textPrimary,
-    minHeight: Math.max(spacing.lg * 2, spacing.minTouchTarget),
-  },
-  inputMultiline: {
-    minHeight: spacing.xl + spacing.lg,
-    textAlignVertical: 'top',
-  },
-  bpRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  bpInput: {
-    flex: 1,
-    minWidth: 0,
-  },
-  bpSlash: {
-    fontSize: 16,
-    fontWeight: typography.body.fontWeight,
-    color: colors.textSecondary,
-    marginHorizontal: -spacing.sm / 2,
-  },
-  saveButton: {
-    width: '100%',
-    marginTop: spacing.lg,
-  },
+    keyboardOuter: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    listContent: {
+      flexGrow: 1,
+      paddingHorizontal: layout.screenPaddingH,
+      paddingTop: layout.screenPaddingTop,
+    },
+    listHeader: {
+      marginBottom: spacing.sm,
+    },
+    pageTitle: {
+      ...typography.h2,
+      color: colors.textPrimary,
+      marginBottom: spacing.s,
+    },
+    sectionHeading: createSectionHeadingStyle(colors),
+    sectionLabel: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      marginBottom: spacing.m,
+    },
+    sectionHint: {
+      ...typography.caption,
+      color: colors.textPlaceholder,
+      marginBottom: spacing.m,
+    },
+    quickActionsRow: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      marginBottom: spacing.xl,
+    },
+    quickActionBtn: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: spacing.xl + spacing.md,
+    },
+    quickActionGap: {
+      width: spacing.md,
+    },
+    metricsGrid: {
+      marginBottom: spacing.xl,
+    },
+    emptyVitalsCard: {
+      marginBottom: spacing.xl,
+      backgroundColor: colors.secondaryMuted,
+    },
+    emptyVitalsText: {
+      ...typography.body,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: typography.body.fontSize * 1.45,
+    },
+    recordsHeading: {
+      marginTop: spacing.xs,
+    },
+    emptyRecordsHint: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      marginBottom: spacing.m,
+    },
+    footer: {
+      marginTop: spacing.lg,
+      paddingTop: spacing.lg,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.borderSubtle,
+    },
+    centered: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: spacing.lg,
+    },
+    loadingText: {
+      fontSize: typography.body.fontSize,
+      fontWeight: typography.body.fontWeight,
+      color: colors.textSecondary,
+    },
+    forbiddenText: {
+      fontSize: typography.body.fontSize,
+      fontWeight: typography.body.fontWeight,
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
+    idCard: {
+      marginBottom: spacing.lg,
+    },
+    cardBlockTitle: {
+      ...createCardTitleStyle(colors),
+      marginBottom: spacing.md,
+    },
+    idLabel: {
+      fontSize: typography.caption.fontSize,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginBottom: spacing.xs,
+    },
+    idValue: {
+      fontSize: typography.subtitle.fontSize,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    fieldGroup,
+    sectionFieldLabel: {
+      ...typography.caption,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      marginBottom: spacing.m,
+    },
+    bpRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+    },
+    bpField: {
+      flex: 1,
+      minWidth: 0,
+      marginBottom: 0,
+    },
+    bpSlash: {
+      fontSize: 16,
+      fontWeight: typography.body.fontWeight,
+      color: colors.textSecondary,
+      marginHorizontal: -spacing.sm / 2,
+    },
+    saveButton: {
+      width: '100%',
+      marginTop: spacing.lg,
+    },
   });
 }

@@ -1,11 +1,11 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { Card, PressableScale } from '../components';
-import { spacing, typography, useTheme } from '../theme';
+import { Card, PressableScale, ScreenContainer } from '../components';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { spacing, typography, layout, stackScrollContent, useTheme } from '../theme';
 import { getAlerts, markAllAlertsRead } from '../services/alertsService';
 
 function formatWhen(ts) {
@@ -16,7 +16,8 @@ function formatWhen(ts) {
 
 export default function AlertsScreen() {
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(colors, insets), [colors, insets]);
   const [alerts, setAlerts] = useState([]);
 
   const load = useCallback(async () => {
@@ -66,7 +67,7 @@ export default function AlertsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <ScreenContainer edges={['top', 'left', 'right']}>
       <FlatList
         data={alerts}
         keyExtractor={(item) => item.id}
@@ -84,26 +85,22 @@ export default function AlertsScreen() {
           </Card>
         }
       />
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, insets) {
   return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    listContent: {
-      padding: spacing.lg,
-      paddingBottom: spacing.screen,
-    },
+    listContent: stackScrollContent(insets, {
+      maxWidth: layout.contentMaxWidth,
+      alignSelf: 'center',
+      width: '100%',
+    }),
     itemPressable: {
       marginBottom: spacing.md,
     },
     itemCard: {
       padding: spacing.lg,
-      borderRadius: spacing.radiusLg,
     },
     itemTop: {
       flexDirection: 'row',

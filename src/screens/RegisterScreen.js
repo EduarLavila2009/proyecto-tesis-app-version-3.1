@@ -1,274 +1,304 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Platform,
-  LayoutAnimation,
-  UIManager,
   useWindowDimensions,
   StatusBar,
+  Alert,
 } from 'react-native';
-import { CommonActions } from '@react-navigation/native';
+// Helper seguro para Fabric — ver src/utils/layoutAnimation.js
+import { configureLayoutAnimation } from '../utils/layoutAnimation';
+import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useHeaderHeight } from '@react-navigation/elements';
-import { STORAGE_KEYS, ROLES, DEFAULT_MEDICAL_HISTORY } from '../constants/storage';
-import { Card, Input, Button, PressableScale, ScreenContainer } from '../components';
-import { spacing, typography, useTheme } from '../theme';
+import { STORAGE_KEYS } from '../constants/storage';
+import {
+  Card,
+  TextInputField,
+  PasswordInput,
+  PrimaryButton,
+  ScreenContainer,
+  ScreenHeader,
+  TextLink,
+  OnboardingProgress,
+  RoleBadge,
+} from '../components';
+// Tokens de tema globales — typography evita "Property 'typography' doesn't exist" en createStyles
+import {
+  layout,
+  spacing,
+  typography,
+  screenScrollContent,
+  authFormWrapStyle,
+  authFormCardStyle,
+  createAuthFieldStyle,
+  useTheme,
+} from '../theme';
+import * as authService from '../services/authService';
 
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-const isValidEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-};
-
-const generateUserId = (users, role) => {
-  const prefix = role === ROLES.DOCTOR ? 'MED' : 'PAC';
-  const samePrefix = (users || []).filter((u) => u.id && u.id.startsWith(prefix));
-  const numbers = samePrefix
-    .map((u) => parseInt(u.id.replace(prefix, ''), 10))
-    .filter((n) => !Number.isNaN(n));
-  const nextNum = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
-  return `${prefix}-${String(nextNum).padStart(4, '0')}`;
-};
-
+/**
+ * Registro — flujo onboarding paso 3 (misma estructura visual que LoginScreen).
+ */
 export default function RegisterScreen({ navigation }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const fieldStyles = useMemo(() => createAuthFieldStyle(), []);
   const headerHeight = useHeaderHeight();
   const keyboardOffset =
     headerHeight + (Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0);
   const { width } = useWindowDimensions();
-  const formMaxW = Math.min(440, width - spacing.lg * 2);
+  const formWrap = authFormWrapStyle(
+    Math.min(layout.contentMaxWidth, width - layout.screenPaddingH * 2)
+  );
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState({});
+  const [registerError, setRegisterError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [selectedRole, setSelectedRole] = useState(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const role = await AsyncStorage.getItem(STORAGE_KEYS.ROLE);
+          if (!cancelled) setSelectedRole(role);
+        } catch (_) {
+          if (!cancelled) setSelectedRole(null);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   const validateForm = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    configureLayoutAnimation();
     const newErrors = {};
     if (!name.trim()) newErrors.name = 'El nombre es obligatorio';
     if (!email.trim()) newErrors.email = 'El correo es obligatorio';
     else if (!isValidEmail(email)) newErrors.email = 'Formato de correo no válido';
     if (!password) newErrors.password = 'La contraseña es obligatoria';
     else if (password.length < 6) newErrors.password = 'Mínimo 6 caracteres';
-    if (password !== confirmPassword) newErrors.confirmPassword = 'Las contraseñas no coinciden';
+    if (password !== confirmPassword) {
+      newErrors.confirmPassword = 'Las contraseñas no coinciden';
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleRegister = async () => {
+    setRegisterError('');
     if (!validateForm()) return;
 
-    try {
-      const role = await AsyncStorage.getItem(STORAGE_KEYS.ROLE);
-      const roleKey = (role || ROLES.PATIENT).toLowerCase();
+    if (!selectedRole) {
+      Alert.alert(
+        'Perfil no seleccionado',
+        'Vuelve al paso anterior y elige si eres paciente o médico.',
+        [{ text: 'Elegir perfil', onPress: () => navigation.navigate('RoleSelection') }]
+      );
+      return;
+    }
 
-      let users = [];
-      const usersJson = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-      if (usersJson) {
-        try {
-          users = JSON.parse(usersJson);
-        } catch (_) {
-          users = [];
-        }
+    setSubmitting(true);
+    try {
+      const res = await authService.register({
+        name,
+        email,
+        password,
+        role: selectedRole,
+      });
+
+      if (res.success) {
+        navigation.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: 'MainTabs' }],
+          })
+        );
+        return;
       }
 
-      const id = generateUserId(users, roleKey);
+      configureLayoutAnimation();
+      if (res.code === 'EMAIL_EXISTS') {
+        setRegisterError(res.message);
+        return;
+      }
 
-      const userData = {
-        id,
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        password,
-        role: roleKey,
-        phone: '',
-        avatar: '',
-        medicalHistory: { ...DEFAULT_MEDICAL_HISTORY },
-      };
-
-      users.push(userData);
-      await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-      await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
-
-      navigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: 'MainTabs' }],
-        })
-      );
+      setRegisterError(res.message || 'No se pudo completar el registro.');
     } catch (error) {
       console.error('Error al registrar:', error);
+      setRegisterError('Ocurrió un error inesperado. Intenta de nuevo.');
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  const goToRoleSelection = () => {
+    navigation.navigate('RoleSelection');
+  };
+
+  const isSubmitDisabled =
+    submitting ||
+    !name.trim() ||
+    !email.trim() ||
+    !password ||
+    !confirmPassword;
 
   return (
     <ScreenContainer
       scroll
+      animateEnter
       keyboardAvoiding
       keyboardVerticalOffset={keyboardOffset}
       contentContainerStyle={styles.scrollContent}
     >
-          <View style={[styles.header, { maxWidth: formMaxW, alignSelf: 'center', width: '100%' }]}>
-            <Text style={styles.title} allowFontScaling>
-              Crear cuenta
+      <View style={formWrap}>
+        <OnboardingProgress currentStep={3} />
+        <RoleBadge role={selectedRole} />
+        <ScreenHeader
+          title="Crear cuenta"
+          subtitle="Completa tus datos. Tu información se guarda solo en este dispositivo."
+          centered={false}
+          style={styles.headerSection}
+        />
+
+        <Card style={[authFormCardStyle(), styles.card]}>
+          <TextInputField
+            label="Nombre completo"
+            required
+            containerStyle={fieldStyles.field}
+            value={name}
+            error={errors.name}
+            validationType="text"
+            onChangeText={(text) => {
+              setName(text);
+              if (errors.name) setErrors({ ...errors, name: null });
+            }}
+            placeholder="Tu nombre"
+            accessibilityLabel="Campo de nombre completo"
+            style={fieldStyles.input}
+          />
+
+          <TextInputField
+            label="Correo electrónico"
+            required
+            containerStyle={fieldStyles.field}
+            value={email}
+            error={errors.email}
+            validationType="email"
+            validateOnBlur
+            onChangeText={(text) => {
+              setEmail(text);
+              if (errors.email) setErrors({ ...errors, email: null });
+            }}
+            placeholder="nombre@correo.com"
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Campo de correo electrónico"
+            style={fieldStyles.input}
+          />
+
+          <PasswordInput
+            label="Contraseña"
+            required
+            containerStyle={fieldStyles.field}
+            value={password}
+            error={errors.password}
+            minLength={6}
+            onChangeText={(text) => {
+              setPassword(text);
+              if (errors.password) setErrors({ ...errors, password: null });
+            }}
+            placeholder="Mínimo 6 caracteres"
+            accessibilityLabel="Campo de contraseña"
+            style={fieldStyles.input}
+          />
+
+          <PasswordInput
+            label="Confirmar contraseña"
+            required
+            containerStyle={fieldStyles.field}
+            value={confirmPassword}
+            error={errors.confirmPassword}
+            minLength={6}
+            onChangeText={(text) => {
+              setConfirmPassword(text);
+              if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: null });
+            }}
+            placeholder="Repite la contraseña"
+            accessibilityLabel="Campo de confirmar contraseña"
+            style={fieldStyles.input}
+          />
+
+          {registerError ? (
+            <Text
+              style={[styles.registerErrorText, fieldStyles.bannerError]}
+              accessibilityLiveRegion="polite"
+              allowFontScaling
+            >
+              {registerError}
             </Text>
-            <Text style={styles.subtitle} allowFontScaling>
-              Completa tus datos para unirte a MEDICAL corp
-            </Text>
-          </View>
+          ) : null}
 
-          <View style={{ width: '100%', maxWidth: formMaxW, alignSelf: 'center' }}>
-            <Card style={styles.card}>
-              <Input
-                label="Nombre completo"
-                containerStyle={styles.fieldGroup}
-                value={name}
-                error={errors.name}
-                onChangeText={(text) => {
-                  setName(text);
-                  if (errors.name) setErrors({ ...errors, name: null });
-                }}
-                placeholder="Tu nombre"
-                accessibilityLabel="Campo de nombre completo"
-                style={styles.input}
-              />
+          <PrimaryButton
+            title={submitting ? 'Creando cuenta…' : 'Registrarse'}
+            onPress={handleRegister}
+            disabled={isSubmitDisabled}
+            style={fieldStyles.submit}
+            accessibilityLabel="Registrarse, crear cuenta"
+          />
+        </Card>
 
-              <Input
-                label="Correo electrónico"
-                containerStyle={styles.fieldGroup}
-                value={email}
-                error={errors.email}
-                onChangeText={(text) => {
-                  setEmail(text);
-                  if (errors.email) setErrors({ ...errors, email: null });
-                }}
-                placeholder="nombre@correo.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                accessibilityLabel="Campo de correo electrónico"
-                style={styles.input}
-              />
+        <TextLink
+          onPress={() => navigation.goBack()}
+          accent="Inicia sesión"
+          accessibilityLabel="¿Ya tienes cuenta? Inicia sesión"
+        >
+          ¿Ya tienes cuenta?{' '}
+        </TextLink>
 
-              <Input
-                label="Contraseña"
-                containerStyle={styles.fieldGroup}
-                value={password}
-                error={errors.password}
-                onChangeText={(text) => {
-                  setPassword(text);
-                  if (errors.password) setErrors({ ...errors, password: null });
-                }}
-                placeholder="Mínimo 6 caracteres"
-                secureTextEntry
-                accessibilityLabel="Campo de contraseña"
-                style={styles.input}
-              />
-
-              <Input
-                label="Confirmar contraseña"
-                containerStyle={styles.fieldGroup}
-                value={confirmPassword}
-                error={errors.confirmPassword}
-                onChangeText={(text) => {
-                  setConfirmPassword(text);
-                  if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: null });
-                }}
-                placeholder="Repite la contraseña"
-                secureTextEntry
-                accessibilityLabel="Campo de confirmar contraseña"
-                style={styles.input}
-              />
-
-              <Button
-                title="Registrarse"
-                onPress={handleRegister}
-                style={styles.primaryButton}
-                accessibilityLabel="Registrarse, crear cuenta"
-              />
-
-              <PressableScale
-                style={styles.secondaryWrap}
-                onPress={() => navigation.goBack()}
-                accessibilityRole="button"
-                accessibilityLabel="Volver al inicio de sesión"
-              >
-                <Text style={styles.secondaryText} allowFontScaling>
-                  ¿Ya tienes cuenta?{' '}
-                  <Text style={styles.secondaryAccent} allowFontScaling>
-                    Inicia sesión
-                  </Text>
-                </Text>
-              </PressableScale>
-            </Card>
-          </View>
+        <TextLink
+          onPress={goToRoleSelection}
+          accent="Cambiar perfil"
+          style={styles.secondaryLink}
+          accessibilityLabel="Cambiar perfil de paciente o médico"
+        >
+          ¿Elegiste otro perfil?{' '}
+        </TextLink>
+      </View>
     </ScreenContainer>
   );
 }
 
-const styles = StyleSheet.create({
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.screen,
-    justifyContent: 'center',
-  },
-  header: {
-    marginBottom: spacing.xl,
-  },
-  title: {
-    fontSize: typography.title.fontSize + 2,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontSize: typography.body.fontSize,
-    fontWeight: typography.body.fontWeight,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: typography.body.fontSize * 1.45,
-  },
-  card: {
-    padding: spacing.lg + spacing.xs,
-    borderRadius: spacing.radiusLg,
-  },
-  fieldGroup: {
-    marginBottom: spacing.md,
-  },
-  input: {
-    width: '100%',
-  },
-  primaryButton: {
-    marginTop: spacing.md,
-    minHeight: spacing.lg * 2 + spacing.xs,
-  },
-  secondaryWrap: {
-    marginTop: spacing.lg,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-  },
-  secondaryText: {
-    fontSize: typography.body.fontSize,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  secondaryAccent: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
+function createStyles(colors) {
+  return StyleSheet.create({
+    scrollContent: screenScrollContent({
+      paddingTop: layout.screenPaddingTop,
+    }),
+    headerSection: {
+      marginBottom: layout.fieldGap,
+    },
+    card: {
+      marginBottom: spacing.s,
+    },
+    registerErrorText: {
+      ...typography.body,
+      color: colors.error,
+      textAlign: 'center',
+      lineHeight: typography.body.lineHeight,
+    },
+    secondaryLink: {
+      marginTop: spacing.s,
+    },
   });
 }

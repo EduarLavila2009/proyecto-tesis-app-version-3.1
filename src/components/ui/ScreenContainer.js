@@ -5,13 +5,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
+import { useScreenEnter } from '../../hooks/useScreenEnter';
 
 /**
- * Layout base: opcional KeyboardAvoidingView (por fuera del SafeArea para mejor comportamiento en iOS)
- * + Safe Area + scroll opcional.
+ * Layout base: Safe Area + scroll opcional.
+ * Con animateEnter: opacity/translateY en Animated.View; layout estático en View hijo (evita mezclar drivers).
  */
 export default function ScreenContainer({
   children,
@@ -25,9 +27,11 @@ export default function ScreenContainer({
   contentContainerStyle,
   scrollProps = {},
   scrollViewRef,
+  animateEnter = false,
 }) {
   const { colors } = useTheme();
   const bg = backgroundColor ?? colors.background;
+  const enter = useScreenEnter(animateEnter);
 
   const kBehavior =
     behavior ??
@@ -50,8 +54,16 @@ export default function ScreenContainer({
       showsVerticalScrollIndicator={false}
       {...scrollProps}
     >
-      {children}
+      {animateEnter ? (
+        <Animated.View style={enter.style}>{children}</Animated.View>
+      ) : (
+        children
+      )}
     </ScrollView>
+  ) : animateEnter ? (
+    <Animated.View style={[styles.flex, enter.style]}>
+      <View style={contentContainerStyle}>{children}</View>
+    </Animated.View>
   ) : (
     <View style={[styles.flex, contentContainerStyle]}>{children}</View>
   );

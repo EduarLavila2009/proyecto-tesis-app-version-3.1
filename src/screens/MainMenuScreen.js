@@ -9,7 +9,7 @@ import spacing from '../constants/spacing';
 import { useTheme } from '../theme';
 import { fontSizes } from '../constants/typography';
 import { ICON_SIZES } from '../constants/icons';
-import { PressableScale } from '../components';
+import { PressableScale, SecondaryButton } from '../components';
 
 /**
  * Menú principal - Dashboard dinámico según rol
@@ -132,17 +132,14 @@ export default function MainMenuScreen({ navigation }) {
         </View>
 
         <View style={styles.logoutSection}>
-          <PressableScale
-            style={styles.logoutButton}
+          <SecondaryButton
+            title="Cerrar sesión"
+            icon="log-out-outline"
+            appearance="outline"
             onPress={handleLogout}
-            accessibilityRole="button"
+            textStyle={{ color: colors.danger }}
             accessibilityLabel="Cerrar sesión"
-          >
-            <Ionicons name="log-out-outline" size={ICON_SIZES.action} color={colors.danger} />
-            <Text style={styles.logoutText} allowFontScaling>
-              Cerrar sesión
-            </Text>
-          </PressableScale>
+          />
         </View>
       </ScrollView>
     </SafeAreaView>

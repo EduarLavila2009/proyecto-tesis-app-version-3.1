@@ -34,8 +34,7 @@ function createStyles(colors) {
       paddingVertical: spacing.sm,
     },
     title: {
-      fontSize: typography.title.fontSize,
-      fontWeight: typography.title.fontWeight,
+      ...typography.h2,
       color: colors.primary,
       textAlign: 'center',
     },

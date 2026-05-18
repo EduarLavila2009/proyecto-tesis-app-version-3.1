@@ -3,14 +3,14 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   Alert,
   Image,
   Pressable,
   ActivityIndicator,
   Switch,
+  Share,
+  Platform,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,11 +20,22 @@ import QRCode from 'react-native-qrcode-svg';
 import { buildPatientQrPayload } from '../services/connectionService';
 import { logout } from '../services/authService';
 import { updateUserProfile } from '../services/profileService';
-import { Header, Card, PressableScale } from '../components';
-import { spacing, typography, useTheme } from '../theme';
-
-const AVATAR_DISPLAY = 112;
-const AVATAR_RING = AVATAR_DISPLAY + spacing.lg * 2;
+import { getUnreadAlertsCount } from '../services/alertsService';
+import {
+  Card,
+  PrimaryButton,
+  SecondaryButton,
+  PressableScale,
+  TabScreenLayout,
+} from '../components';
+import {
+  spacing,
+  typography,
+  layout,
+  useTheme,
+  createSectionHeadingStyle,
+} from '../theme';
+import { useProfileLayout } from '../hooks/useProfileLayout';
 
 function avatarInitials(name) {
   const t = (name || '').trim();
@@ -40,14 +51,18 @@ function hasAvatarUri(user) {
 }
 
 /**
- * Perfil — datos en AsyncStorage; foto desde galería (base64 o URI).
+ * Perfil — UI profesional, responsive y alineada al tema global.
  */
 export default function ProfileScreen({ navigation }) {
   const { colors, cardShadow, isDark, setMode } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const insets = useSafeAreaInsets();
+  const layoutMetrics = useProfileLayout();
+  const styles = useMemo(
+    () => createStyles(colors, layoutMetrics),
+    [colors, layoutMetrics]
+  );
   const [user, setUser] = useState(null);
   const [pickingPhoto, setPickingPhoto] = useState(false);
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -60,6 +75,8 @@ export default function ProfileScreen({ navigation }) {
             return;
           }
           setUser(JSON.parse(raw));
+          const count = await getUnreadAlertsCount();
+          if (!cancelled) setUnreadAlerts(count);
         } catch (_) {
           setUser(null);
         }
@@ -154,257 +171,311 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
+  const handleShareQr = async () => {
+    if (!user?.id) return;
+    try {
+      await Share.share({
+        message: `Código de paciente MEDICAL corp\nID: ${user.id}\n${buildPatientQrPayload(user.id)}`,
+      });
+    } catch (_) {
+      /* usuario canceló */
+    }
+  };
+
   const showAvatarImage = hasAvatarUri(user);
   const isPatient = user?.role === ROLES.PATIENT;
   const isDoctor = user?.role === ROLES.DOCTOR;
+  const historyTarget = isDoctor ? 'Patients' : 'History';
+
+  const { avatarDisplay, avatarRing, cameraBadge, qrSize } = layoutMetrics;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingBottom: spacing.xl + spacing.lg + spacing.md + insets.bottom },
-        ]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Header
-          title="Mi perfil"
-          style={styles.headerBlock}
-          textStyle={styles.headerTitle}
-        />
-
-        <View style={styles.hero}>
-          <Pressable
-            onPress={handlePickAvatar}
-            style={({ pressed }) => [styles.avatarPressable, pressed && styles.avatarPressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Cambiar foto de perfil"
+    <TabScreenLayout scrollProps={{ showsVerticalScrollIndicator: false }}>
+      {/* Hero: avatar + identidad + acciones rápidas */}
+      <View style={styles.hero}>
+        <Pressable
+          onPress={handlePickAvatar}
+          style={({ pressed }) => [
+            styles.avatarPressable,
+            pressed && styles.avatarPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Cambiar foto de perfil"
+          accessibilityHint="Abre la galería para elegir una imagen"
+          android_ripple={
+            Platform.OS === 'android'
+              ? { color: `${colors.primary}22`, borderless: true, radius: avatarRing / 2 }
+              : undefined
+          }
+        >
+          <View
+            style={[
+              styles.avatarRing,
+              cardShadow,
+              { width: avatarRing, height: avatarRing, borderRadius: 9999 },
+            ]}
           >
-            <View style={[styles.avatarRing, cardShadow]}>
-              {pickingPhoto ? (
-                <ActivityIndicator color={colors.primary} size="large" />
-              ) : showAvatarImage ? (
-                <Image
-                  source={{ uri: user.avatar }}
-                  style={styles.avatarImage}
-                  accessibilityIgnoresInvertColors
-                />
-              ) : (
-                <Text style={styles.avatarInitials} allowFontScaling>
-                  {avatarInitials(displayName)}
-                </Text>
-              )}
-              <View style={styles.cameraBadge}>
-                <Ionicons name="camera" size={18} color={colors.onPrimary} />
-              </View>
+            {pickingPhoto ? (
+              <ActivityIndicator color={colors.primary} size="large" />
+            ) : showAvatarImage ? (
+              <Image
+                source={{ uri: user.avatar }}
+                style={[
+                  styles.avatarImage,
+                  {
+                    width: avatarDisplay,
+                    height: avatarDisplay,
+                    borderRadius: 9999,
+                  },
+                ]}
+                accessibilityIgnoresInvertColors
+              />
+            ) : (
+              <Text
+                style={[styles.avatarInitials, { fontSize: avatarDisplay * 0.28 }]}
+                allowFontScaling
+              >
+                {avatarInitials(displayName)}
+              </Text>
+            )}
+            <View
+              style={[
+                styles.cameraBadge,
+                {
+                  width: cameraBadge,
+                  height: cameraBadge,
+                  borderRadius: 9999,
+                },
+              ]}
+            >
+              <Ionicons name="camera" size={Math.round(cameraBadge * 0.5)} color={colors.onPrimary} />
             </View>
-          </Pressable>
+          </View>
+        </Pressable>
 
-          <Text style={styles.displayName} allowFontScaling numberOfLines={2}>
-            {displayName}
-          </Text>
-          <Text style={styles.displaySub} allowFontScaling>
+        <Text style={styles.displayName} allowFontScaling numberOfLines={2}>
+          {displayName}
+        </Text>
+
+        <View style={styles.emailPill}>
+          <Text style={styles.displayEmail} allowFontScaling numberOfLines={2}>
             {displayEmail}
           </Text>
-
-          <Pressable onPress={handlePickAvatar} style={styles.changePhotoLink}>
-            <Text style={styles.changePhotoText} allowFontScaling>
-              Cambiar foto de perfil
-            </Text>
-          </Pressable>
         </View>
 
-        <Text style={styles.sectionHeading} allowFontScaling>
-          Apariencia
+        <Text style={styles.photoHint} allowFontScaling>
+          Toca el avatar para cambiar tu foto
         </Text>
-        <Card style={styles.settingsCard}>
-          <View style={styles.themeRow}>
-            <View style={styles.themeTextBlock}>
-              <Text style={styles.themeTitle} allowFontScaling>
-                Modo oscuro
-              </Text>
-              <Text style={styles.themeHint} allowFontScaling>
-                Menos brillo en ambientes oscuros
-              </Text>
-            </View>
-            <Switch
-              value={isDark}
-              onValueChange={(v) => setMode(v ? 'dark' : 'light')}
-              trackColor={{
-                false: colors.borderSubtle,
-                true: `${colors.primary}99`,
-              }}
-              thumbColor={isDark ? colors.primary : colors.surface}
-              ios_backgroundColor={colors.borderSubtle}
+
+        <View style={styles.quickActionsRow}>
+          <PrimaryButton
+            title="Ver historial"
+            icon="calendar-outline"
+            onPress={() => navigation.navigate(historyTarget)}
+            style={styles.quickActionBtn}
+            accessibilityLabel="Ver historial"
+          />
+          <View style={styles.quickActionGap} />
+          <SecondaryButton
+            title="IA médica"
+            icon="sparkles-outline"
+            onPress={() => navigation.navigate('MedicalAI')}
+            style={styles.quickActionBtn}
+            accessibilityLabel="Abrir asistente de IA médica"
+          />
+        </View>
+      </View>
+
+      {isPatient ? (
+        <>
+          <Text style={styles.sectionHeading} allowFontScaling>
+            Salud y recordatorios
+          </Text>
+          <Card style={styles.toolsCard}>
+            <PrimaryButton
+              title="Cuidado y recordatorios"
+              icon="heart-outline"
+              onPress={() => navigation.navigate('PatientWellness')}
+              style={styles.toolBtn}
+              accessibilityLabel="Abrir recordatorios, agenda y contacto de emergencia"
+            />
+            <SecondaryButton
+              title={unreadAlerts > 0 ? `Alertas (${unreadAlerts})` : 'Ver alertas'}
+              icon="notifications-outline"
+              appearance="outline"
+              onPress={() => navigation.navigate('Alerts')}
+              style={styles.toolBtnLast}
+              accessibilityLabel="Ver alertas médicas"
+            />
+          </Card>
+        </>
+      ) : null}
+
+      {/* Apariencia — modo oscuro vía ThemeProvider (sin cambiar lógica) */}
+      <Text style={styles.sectionHeading} allowFontScaling>
+        Apariencia
+      </Text>
+      <Card style={[styles.settingsCard, isDark && styles.settingsCardDark]}>
+        <View style={styles.themeRow}>
+          <View style={[styles.themeIconWrap, { backgroundColor: colors.secondaryMuted }]}>
+            <Ionicons
+              name={isDark ? 'moon' : 'sunny-outline'}
+              size={22}
+              color={colors.primary}
             />
           </View>
-        </Card>
-
-        {isPatient && user?.id ? (
-          <>
-            <Text style={styles.sectionHeading} allowFontScaling>
-              Tu código QR
+          <View style={styles.themeTextBlock}>
+            <Text style={styles.themeTitle} allowFontScaling>
+              Modo oscuro
             </Text>
-            <Card style={styles.qrCard}>
-              <Text style={styles.qrHint} allowFontScaling>
-                Muéstralo a tu médico para que escanee y te vincule a su lista.
-              </Text>
-              <View style={styles.qrWrap}>
-                <QRCode
-                  value={buildPatientQrPayload(user.id)}
-                  size={200}
-                  color={colors.textPrimary}
-                  backgroundColor={colors.surface}
-                />
-              </View>
-              <Text style={styles.qrId} selectable allowFontScaling>
-                ID: {user.id}
-              </Text>
-            </Card>
-          </>
-        ) : null}
-
-        {isDoctor ? (
-          <PressableScale
-            containerStyle={styles.pressableFull}
-            style={styles.linkPatientBtn}
-            onPress={() => navigation.navigate('ConnectPatient')}
-            accessibilityRole="button"
-            accessibilityLabel="Vincular paciente escaneando su código QR"
-          >
-            <Ionicons name="qr-code-outline" size={22} color={colors.primary} style={styles.linkPatientIcon} />
-            <Text style={styles.linkPatientLabel} allowFontScaling>
-              Vincular paciente (QR)
-            </Text>
-          </PressableScale>
-        ) : null}
-
-        <Text style={styles.sectionHeading} allowFontScaling>
-          Información
-        </Text>
-        <Card style={styles.infoCard}>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel} allowFontScaling>
-              Teléfono
-            </Text>
-            <Text style={styles.fieldValue} selectable allowFontScaling>
-              {displayPhone}
+            <Text style={styles.themeHint} allowFontScaling>
+              {isDark ? 'Tema oscuro activo' : 'Menos brillo en ambientes oscuros'}
             </Text>
           </View>
-          <View style={styles.divider} />
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel} allowFontScaling>
-              Rol
-            </Text>
-            <Text style={styles.fieldValue} selectable allowFontScaling>
-              {user?.role === 'doctor' ? 'Médico' : 'Paciente'}
-            </Text>
-          </View>
-        </Card>
+          <Switch
+            value={isDark}
+            onValueChange={(v) => setMode(v ? 'dark' : 'light')}
+            trackColor={{
+              false: colors.borderSubtle,
+              true: `${colors.primary}99`,
+            }}
+            thumbColor={isDark ? colors.primary : colors.surface}
+            ios_backgroundColor={colors.borderSubtle}
+            accessibilityLabel="Activar modo oscuro"
+          />
+        </View>
+      </Card>
 
+      {isPatient && user?.id ? (
+        <>
+          <Text style={styles.sectionHeading} allowFontScaling>
+            Tu código QR
+          </Text>
+          <Card style={[styles.qrCard, cardShadow]}>
+            <Text style={styles.qrHint} allowFontScaling>
+              Muéstralo a tu médico para que escanee y te vincule a su lista.
+            </Text>
+            <View style={styles.qrWrap}>
+              <QRCode
+                value={buildPatientQrPayload(user.id)}
+                size={qrSize}
+                color={colors.textPrimary}
+                backgroundColor={colors.surface}
+              />
+            </View>
+            <Text style={styles.qrId} selectable allowFontScaling>
+              ID: {user.id}
+            </Text>
+            <SecondaryButton
+              title="Compartir código"
+              icon="share-outline"
+              onPress={handleShareQr}
+              style={styles.shareQrBtn}
+              accessibilityLabel="Compartir código QR del paciente"
+            />
+          </Card>
+        </>
+      ) : null}
+
+      {isDoctor ? (
         <PressableScale
           containerStyle={styles.pressableFull}
-          style={styles.editPrimaryBtn}
-          onPress={handleEditProfile}
+          style={styles.linkPatientBtn}
+          onPress={() => navigation.navigate('ConnectPatient')}
           accessibilityRole="button"
-          accessibilityLabel="Editar datos del perfil"
+          accessibilityLabel="Vincular paciente escaneando su código QR"
         >
           <Ionicons
-            name="create-outline"
+            name="qr-code-outline"
             size={22}
-            color={colors.onPrimary}
-            style={styles.editIcon}
+            color={colors.primary}
+            style={styles.linkPatientIcon}
           />
-          <Text style={styles.editPrimaryLabel} allowFontScaling>
-            Editar perfil
+          <Text style={styles.linkPatientLabel} allowFontScaling>
+            Vincular paciente (QR)
           </Text>
         </PressableScale>
+      ) : null}
 
-        <PressableScale
-          containerStyle={styles.pressableFull}
-          style={styles.logoutBtn}
-          onPress={handleLogout}
-          accessibilityRole="button"
-          accessibilityLabel="Cerrar sesión"
-        >
-          <Ionicons
-            name="log-out-outline"
-            size={22}
-            color={colors.danger}
-            style={styles.logoutIcon}
-          />
-          <Text style={styles.logoutText} allowFontScaling>
-            Cerrar sesión
+      <Text style={styles.sectionHeading} allowFontScaling>
+        Información
+      </Text>
+      <Card style={styles.infoCard}>
+        <View style={styles.fieldRow}>
+          <Text style={styles.fieldLabel} allowFontScaling>
+            Teléfono
           </Text>
-        </PressableScale>
-      </ScrollView>
-    </SafeAreaView>
+          <Text style={styles.fieldValue} selectable allowFontScaling>
+            {displayPhone}
+          </Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.fieldRow}>
+          <Text style={styles.fieldLabel} allowFontScaling>
+            Rol
+          </Text>
+          <Text style={styles.fieldValue} selectable allowFontScaling>
+            {user?.role === 'doctor' ? 'Médico' : 'Paciente'}
+          </Text>
+        </View>
+      </Card>
+
+      <PrimaryButton
+        title="Editar perfil"
+        icon="create-outline"
+        onPress={handleEditProfile}
+        style={styles.editBtn}
+        accessibilityLabel="Editar datos del perfil"
+      />
+
+      <SecondaryButton
+        title="Cerrar sesión"
+        icon="log-out-outline"
+        appearance="outline"
+        onPress={handleLogout}
+        style={styles.logoutBtn}
+        textStyle={{ color: colors.danger }}
+        accessibilityLabel="Cerrar sesión"
+      />
+    </TabScreenLayout>
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, metrics) {
   return StyleSheet.create({
-    safe: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    scroll: {
-      flexGrow: 1,
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.md,
-    },
-    headerBlock: {
-      marginBottom: spacing.lg,
-      alignItems: 'flex-start',
-    },
-    headerTitle: {
-      fontSize: typography.title.fontSize,
-      fontWeight: typography.title.fontWeight,
-      color: colors.textPrimary,
-      textAlign: 'left',
-      width: '100%',
-      letterSpacing: -0.3,
-    },
     hero: {
       alignItems: 'center',
-      marginBottom: spacing.xl,
+      marginBottom: layout.sectionGap,
+      width: '100%',
     },
     avatarPressable: {
-      marginBottom: spacing.md,
+      marginBottom: spacing.m,
+      borderRadius: 9999,
     },
     avatarPressed: {
       opacity: 0.88,
+      transform: [{ scale: 0.98 }],
     },
     avatarRing: {
-      width: AVATAR_RING,
-      height: AVATAR_RING,
-      borderRadius: AVATAR_RING / 2,
       backgroundColor: colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 3,
-      borderColor: `${colors.primary}35`,
+      borderColor: `${colors.primary}40`,
       overflow: 'hidden',
     },
     avatarImage: {
-      width: AVATAR_DISPLAY + spacing.md,
-      height: AVATAR_DISPLAY + spacing.md,
-      borderRadius: (AVATAR_DISPLAY + spacing.md) / 2,
+      resizeMode: 'cover',
     },
     avatarInitials: {
-      fontSize: 28,
       fontWeight: '700',
       color: colors.primary,
       letterSpacing: 0.5,
     },
     cameraBadge: {
       position: 'absolute',
-      bottom: spacing.sm,
-      right: spacing.sm,
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      bottom: spacing.xs,
+      right: spacing.xs,
       backgroundColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
@@ -412,98 +483,131 @@ function createStyles(colors) {
       borderColor: colors.surface,
     },
     displayName: {
-      fontSize: typography.title.fontSize + 2,
-      fontWeight: '700',
-      color: colors.textPrimary,
+      ...typography.h2,
+      color: colors.primary,
       textAlign: 'center',
       letterSpacing: -0.4,
-      marginBottom: spacing.xs,
-      paddingHorizontal: spacing.md,
+      marginBottom: spacing.sm,
+      paddingHorizontal: spacing.m,
+      maxWidth: metrics.contentWidth,
     },
-    displaySub: {
+    emailPill: {
+      backgroundColor: colors.secondaryMuted,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.m,
+      borderRadius: spacing.radiusLg,
+      marginBottom: spacing.xs,
+      maxWidth: metrics.contentWidth,
+    },
+    displayEmail: {
       ...typography.body,
       color: colors.textSecondary,
       textAlign: 'center',
-      marginBottom: spacing.sm,
     },
-    changePhotoLink: {
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
+    photoHint: {
+      ...typography.caption,
+      color: colors.textPlaceholder,
+      textAlign: 'center',
+      marginBottom: spacing.m,
     },
-    changePhotoText: {
-      fontSize: typography.caption.fontSize,
-      fontWeight: '600',
-      color: colors.primary,
+    quickActionsRow: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      width: '100%',
+      maxWidth: metrics.contentWidth,
+    },
+    quickActionBtn: {
+      flex: 1,
+    },
+    quickActionGap: {
+      width: spacing.m,
+    },
+    toolsCard: {
+      marginBottom: spacing.lg,
+      paddingVertical: spacing.m,
+    },
+    toolBtn: {
+      width: '100%',
+      marginBottom: spacing.m,
+    },
+    toolBtnLast: {
+      width: '100%',
     },
     sectionHeading: {
-      fontSize: typography.caption.fontSize,
-      fontWeight: '600',
-      color: colors.textSecondary,
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
-      marginBottom: spacing.sm,
+      ...createSectionHeadingStyle(colors),
+      marginTop: 0,
       marginLeft: spacing.xs,
     },
     settingsCard: {
-      width: '100%',
-      padding: spacing.md,
       marginBottom: spacing.lg,
-      borderRadius: spacing.radiusLg,
+    },
+    settingsCardDark: {
+      borderColor: colors.borderSubtle,
     },
     themeRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.md,
+      gap: spacing.m,
+    },
+    themeIconWrap: {
+      width: 44,
+      height: 44,
+      borderRadius: spacing.radiusButton,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     themeTextBlock: {
       flex: 1,
       minWidth: 0,
     },
     themeTitle: {
-      fontSize: typography.body.fontSize,
-      fontWeight: '600',
+      ...typography.bodyMedium,
       color: colors.textPrimary,
       marginBottom: spacing.xs / 2,
     },
     themeHint: {
-      fontSize: typography.caption.fontSize,
-      fontWeight: typography.caption.fontWeight,
+      ...typography.caption,
       color: colors.textSecondary,
-      lineHeight: typography.caption.fontSize * 1.4,
     },
     qrCard: {
-      width: '100%',
-      padding: spacing.lg,
       marginBottom: spacing.lg,
-      borderRadius: spacing.radiusLg,
       alignItems: 'center',
+      width: '100%',
     },
     qrHint: {
-      fontSize: typography.body.fontSize,
+      ...typography.body,
       color: colors.textSecondary,
       textAlign: 'center',
-      marginBottom: spacing.md,
-      lineHeight: typography.body.fontSize * 1.45,
+      marginBottom: spacing.m,
+      lineHeight: typography.body.lineHeight,
     },
     qrWrap: {
-      padding: spacing.md,
+      padding: spacing.m,
       borderRadius: spacing.radiusCard,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.background,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.borderSubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     qrId: {
-      marginTop: spacing.md,
-      fontSize: typography.caption.fontSize,
-      color: colors.textSecondary,
-      fontWeight: '600',
+      marginTop: spacing.m,
+      ...typography.caption,
+      color: colors.textPrimary,
+      fontWeight: '700',
+      letterSpacing: 0.3,
+    },
+    shareQrBtn: {
+      width: '100%',
+      marginTop: spacing.m,
     },
     linkPatientBtn: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       width: '100%',
-      minHeight: spacing.minTouchTarget + spacing.xs,
-      paddingVertical: spacing.md,
+      minHeight: spacing.minTouchTarget,
+      paddingVertical: spacing.m,
       paddingHorizontal: spacing.lg,
       borderRadius: spacing.radiusButton,
       backgroundColor: colors.surface,
@@ -515,32 +619,23 @@ function createStyles(colors) {
       marginRight: spacing.sm,
     },
     linkPatientLabel: {
-      fontSize: typography.body.fontSize,
-      fontWeight: '700',
+      ...typography.bodyMedium,
       color: colors.primary,
     },
     infoCard: {
-      width: '100%',
-      padding: spacing.lg,
-      marginBottom: spacing.xl,
-      borderRadius: spacing.radiusLg,
+      marginBottom: spacing.l,
     },
     fieldRow: {
-      paddingVertical: spacing.md,
+      paddingVertical: spacing.sm,
     },
     fieldLabel: {
-      fontSize: typography.caption.fontSize,
-      fontWeight: '600',
+      ...typography.label,
       color: colors.textSecondary,
-      marginBottom: spacing.sm,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      marginBottom: spacing.xs,
     },
     fieldValue: {
-      fontSize: typography.body.fontSize,
-      fontWeight: typography.body.fontWeight,
+      ...typography.body,
       color: colors.textPrimary,
-      lineHeight: typography.body.fontSize * 1.45,
     },
     divider: {
       height: StyleSheet.hairlineWidth,
@@ -548,48 +643,12 @@ function createStyles(colors) {
     },
     pressableFull: {
       width: '100%',
-      alignSelf: 'stretch',
     },
-    editPrimaryBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: '100%',
-      minHeight: spacing.minTouchTarget + spacing.xs,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.lg,
-      borderRadius: spacing.radiusButton,
-      backgroundColor: colors.primary,
-      marginBottom: spacing.md,
-    },
-    editIcon: {
-      marginRight: spacing.sm,
-    },
-    editPrimaryLabel: {
-      fontSize: typography.body.fontSize,
-      fontWeight: '600',
-      color: colors.onPrimary,
+    editBtn: {
+      marginBottom: spacing.m,
     },
     logoutBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: '100%',
-      minHeight: spacing.minTouchTarget + spacing.xs,
-      paddingVertical: spacing.md,
-      marginTop: spacing.xs,
-      backgroundColor: colors.surface,
-      borderRadius: spacing.radiusButton,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.borderSubtle,
-    },
-    logoutIcon: {
-      marginRight: spacing.sm,
-    },
-    logoutText: {
-      fontSize: typography.body.fontSize,
-      fontWeight: typography.subtitle.fontWeight,
-      color: colors.danger,
+      marginBottom: spacing.s,
     },
   });
 }

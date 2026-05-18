@@ -1,8 +1,7 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   FlatList,
   KeyboardAvoidingView,
@@ -10,16 +9,23 @@ import {
   Keyboard,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { useHeaderHeight } from '@react-navigation/elements';
+import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/storage';
-import { PressableScale } from '../components';
-import { spacing, typography, useTheme } from '../theme';
+import {
+  AnimatedChatMessageBubble,
+  ChatComposer,
+  ChatHeaderTitle,
+  ChatTypingIndicator,
+} from '../components';
+import { spacing, typography, chatLayout, useTheme } from '../theme';
+import { useChatKeyboard } from '../hooks/useChatKeyboard';
 
 /**
- * IA médica simulada — layout tipo WhatsApp/Telegram:
- * SafeArea → KeyboardAvoiding (solo iOS) → columna flex → lista + input absoluto al pie.
+ * IA médica simulada — chat tipo mensajería.
+ * Layout: KAV (iOS) + FlatList + barra de composición fija con ajuste de teclado en Android.
+ * Lógica de respuestas: getAIResponse (sin cambios).
  */
 
 const getAIResponse = (userMessage, lastAiMessageText) => {
@@ -61,7 +67,7 @@ const getAIResponse = (userMessage, lastAiMessageText) => {
     );
   } else if (msg.includes('me siento mal') || msg.includes('mal en general') || msg.includes('malestar')) {
     response = withSafetyNote(
-      'Lamento que te sientas así. Cuando dices que te sientes mal, ¿te refieres a cansancio extremo, mareos, náuseas, tristeza, ansiedad u otro tipo de malestar? Cuéntame un poco más sobre qué notas en tu cuerpo o en tu estado de ánimo.'
+      'Lamento que te sientas así. Cuando dices que te sientas mal, ¿te refieres a cansancio extremo, mareos, náuseas, tristeza, ansiedad u otro tipo de malestar? Cuéntame un poco más sobre qué notas en tu cuerpo o en tu estado de ánimo.'
     );
   } else if (msg.includes('tos')) {
     response = withSafetyNote(
@@ -110,10 +116,15 @@ const getAIResponse = (userMessage, lastAiMessageText) => {
   return response;
 };
 
-const BUBBLE_RADIUS = 20;
-const INPUT_MIN_HEIGHT = Math.max(46, spacing.minTouchTarget);
-const SEND_BUTTON_SIZE = Math.max(46, spacing.minTouchTarget);
+const LIST_PERF = {
+  initialNumToRender: 12,
+  maxToRenderPerBatch: 8,
+  windowSize: 9,
+  removeClippedSubviews: Platform.OS === 'android',
+};
+
 export default function IAMedicaScreen() {
+  const navigation = useNavigation();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const headerHeight = useHeaderHeight();
@@ -132,16 +143,50 @@ export default function IAMedicaScreen() {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [inputBarHeight, setInputBarHeight] = useState(72);
 
   const flatListRef = useRef(null);
 
-  const keyboardVerticalOffset = Platform.OS === 'ios' ? headerHeight + insets.top : 0;
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: () => <ChatHeaderTitle />,
+    });
+  }, [navigation]);
 
-  const scrollToBottom = useCallback(() => {
+  const keyboardVerticalOffset =
+    Platform.OS === 'ios' ? headerHeight + insets.top : 0;
+
+  const scrollToBottom = useCallback((animated = true) => {
     requestAnimationFrame(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
+      flatListRef.current?.scrollToEnd({ animated });
     });
   }, []);
+
+  const { keyboardHeight } = useChatKeyboard(() => {
+    scrollToBottom(true);
+  });
+
+  const listPaddingBottom = useMemo(() => {
+    const base =
+      inputBarHeight +
+      chatLayout.listPaddingBottom +
+      chatLayout.listExtraScrollPadding;
+    if (Platform.OS === 'android' && keyboardHeight > 0) {
+      return base + keyboardHeight * 0.15;
+    }
+    return base;
+  }, [inputBarHeight, keyboardHeight]);
+
+  const listContentStyle = useMemo(
+    () => [styles.listContent, { paddingBottom: listPaddingBottom }],
+    [styles.listContent, listPaddingBottom]
+  );
+
+  /** En Android con `softwareKeyboardLayoutMode: resize` el sistema redimensiona la ventana. */
+  const inputBarBottomPad = useMemo(
+    () => Math.max(insets.bottom, spacing.sm),
+    [insets.bottom]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -187,7 +232,10 @@ export default function IAMedicaScreen() {
             id: m.id,
             text: m.text,
             isUser: m.isUser,
-            timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : new Date().toISOString(),
+            timestamp:
+              m.timestamp instanceof Date
+                ? m.timestamp.toISOString()
+                : new Date().toISOString(),
           }))
         )
       ).catch((e) => console.error('IAMedicaScreen.persist', e));
@@ -196,15 +244,20 @@ export default function IAMedicaScreen() {
   }, [messages, hydrated]);
 
   useEffect(() => {
-    const t = setTimeout(scrollToBottom, 100);
+    if (!hydrated) return;
+    const t = setTimeout(() => scrollToBottom(false), 120);
     return () => clearTimeout(t);
-  }, [messages, isTyping, scrollToBottom]);
+  }, [hydrated, scrollToBottom]);
+
+  useEffect(() => {
+    const t = setTimeout(() => scrollToBottom(true), 80);
+    return () => clearTimeout(t);
+  }, [messages, isTyping, scrollToBottom, inputBarHeight, keyboardHeight]);
 
   const handleSend = () => {
     const text = inputText.trim();
-    if (!text) return;
+    if (!text || isTyping) return;
 
-    Keyboard.dismiss();
     const userMsg = {
       id: Date.now().toString(),
       text,
@@ -220,6 +273,9 @@ export default function IAMedicaScreen() {
       return [...prev, userMsg];
     });
 
+    Keyboard.dismiss();
+    scrollToBottom(true);
+
     setIsTyping(true);
     setTimeout(() => {
       const aiResponse = getAIResponse(text, lastAiText);
@@ -234,111 +290,90 @@ export default function IAMedicaScreen() {
     }, 800);
   };
 
-  const renderMessage = useCallback(({ item }) => (
-    <View
-      style={[styles.messageRow, item.isUser ? styles.userRow : styles.aiRow]}
-    >
-      <View
-        style={[styles.bubble, item.isUser ? styles.userBubble : styles.aiBubble]}
-      >
-        <Text
-          style={[
-            styles.bubbleText,
-            item.isUser ? styles.userText : styles.aiText,
-          ]}
-          allowFontScaling
-        >
-          {item.text}
-        </Text>
-      </View>
-    </View>
-  ), [styles]);
+  const renderMessage = useCallback(
+    ({ item, index }) => {
+      const prev = index > 0 ? messages[index - 1] : null;
+      const isGrouped = prev != null && prev.isUser === item.isUser;
 
-  const ListTyping = useCallback(
+      return (
+        <AnimatedChatMessageBubble
+          text={item.text}
+          isUser={item.isUser}
+          timestamp={item.timestamp}
+          isGrouped={isGrouped}
+        />
+      );
+    },
+    [messages]
+  );
+
+  const ListDisclaimer = useCallback(
     () => (
-      <View style={[styles.messageRow, styles.aiRow]}>
-        <View style={styles.typingBubble}>
-          <Text style={styles.typingLabel} allowFontScaling>
-            Escribiendo…
-          </Text>
-          <View style={styles.typingDots}>
-            <View style={styles.typingDot} />
-            <View style={styles.typingDot} />
-            <View style={styles.typingDot} />
-          </View>
-        </View>
+      <View style={styles.disclaimer} accessibilityRole="text">
+        <Text style={styles.disclaimerText} allowFontScaling>
+          Orientación informativa · No sustituye consulta médica presencial
+        </Text>
       </View>
     ),
     [styles]
   );
 
-  const chatBody = (
-    <View style={styles.mainColumn}>
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={renderMessage}
-        ListFooterComponent={isTyping ? <ListTyping /> : null}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: spacing.md },
-        ]}
-        style={styles.list}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        showsVerticalScrollIndicator={false}
-        onScrollBeginDrag={() => Keyboard.dismiss()}
-        onContentSizeChange={() => scrollToBottom()}
-      />
-
-      <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-        <TextInput
-          style={styles.input}
-          placeholder="Escribe tu mensaje..."
-          placeholderTextColor={colors.textPlaceholder}
-          value={inputText}
-          onChangeText={setInputText}
-          multiline
-          maxLength={500}
-          onSubmitEditing={handleSend}
-          returnKeyType="send"
-          blurOnSubmit={false}
-          selectionColor={colors.primary}
-          {...(Platform.OS === 'android' && { cursorColor: colors.primary })}
-          accessibilityLabel="Campo de mensaje para el asistente médico"
-          allowFontScaling
-        />
-        <PressableScale
-          style={[
-            styles.sendButton,
-            !inputText.trim() && styles.sendButtonDisabled,
-          ]}
-          onPress={handleSend}
-          disabled={!inputText.trim()}
-          accessibilityRole="button"
-          accessibilityLabel="Enviar mensaje"
-          accessibilityState={{ disabled: !inputText.trim() }}
-        >
-          <Ionicons
-            name="send"
-            size={22}
-            color={inputText.trim() ? colors.onPrimary : colors.textSecondary}
-          />
-        </PressableScale>
-      </View>
-    </View>
-  );
+  const onInputBarLayout = useCallback((e) => {
+    const h = e.nativeEvent.layout.height;
+    if (h > 0 && Math.abs(h - inputBarHeight) > 2) {
+      setInputBarHeight(h);
+    }
+  }, [inputBarHeight]);
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <KeyboardAvoidingView
         style={styles.flex1}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={keyboardVerticalOffset}
-        enabled
+        enabled={Platform.OS === 'ios'}
       >
-        {chatBody}
+        <View style={styles.mainColumn}>
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessage}
+            ListHeaderComponent={ListDisclaimer}
+            ListFooterComponent={isTyping ? <ChatTypingIndicator /> : null}
+            contentContainerStyle={listContentStyle}
+            style={styles.list}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+            onScrollBeginDrag={() => Keyboard.dismiss()}
+            onContentSizeChange={() => scrollToBottom(false)}
+            automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+            maintainVisibleContentPosition={
+              Platform.OS === 'ios'
+                ? { minIndexForVisible: 0, autoscrollToTopThreshold: 24 }
+                : undefined
+            }
+            extraData={{ messages, isTyping }}
+            {...LIST_PERF}
+          />
+
+          <View
+            onLayout={onInputBarLayout}
+            style={[
+              styles.inputBar,
+              { paddingBottom: inputBarBottomPad },
+            ]}
+          >
+            <ChatComposer
+              value={inputText}
+              onChangeText={setInputText}
+              onSend={handleSend}
+              sendDisabled={isTyping}
+              placeholder="Escribe tu síntoma o consulta…"
+            />
+          </View>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -346,127 +381,47 @@ export default function IAMedicaScreen() {
 
 function createStyles(colors) {
   return StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  flex1: {
-    flex: 1,
-  },
-  mainColumn: {
-    flex: 1,
-    position: 'relative',
-  },
-  list: {
-    flex: 1,
-  },
-  listContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    flexGrow: 1,
-  },
-  messageRow: {
-    marginBottom: spacing.md,
-  },
-  userRow: {
-    alignItems: 'flex-end',
-  },
-  aiRow: {
-    alignItems: 'flex-start',
-  },
-  bubble: {
-    maxWidth: '86%',
-    paddingVertical: spacing.md - 2,
-    paddingHorizontal: spacing.md,
-    borderRadius: BUBBLE_RADIUS,
-  },
-  userBubble: {
-    backgroundColor: colors.primary,
-    borderBottomRightRadius: 4,
-  },
-  aiBubble: {
-    backgroundColor: colors.surface,
-    borderBottomLeftRadius: 4,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  bubbleText: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.fontSize * 1.5,
-    letterSpacing: 0.15,
-  },
-  userText: {
-    color: colors.onPrimary,
-  },
-  aiText: {
-    color: colors.textPrimary,
-  },
-  typingBubble: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: BUBBLE_RADIUS,
-    borderBottomLeftRadius: 4,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  typingLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-    fontWeight: '700',
-  },
-  typingDots: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  typingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.textSecondary,
-  },
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    backgroundColor: colors.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
-    gap: spacing.sm,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: colors.background,
-    borderRadius: spacing.radiusXl,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    fontSize: 16,
-    lineHeight: 22,
-    color: colors.textPrimary,
-    minHeight: INPUT_MIN_HEIGHT,
-    maxHeight: 120,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  sendButton: {
-    width: SEND_BUTTON_SIZE,
-    height: SEND_BUTTON_SIZE,
-    borderRadius: SEND_BUTTON_SIZE / 2,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendButtonDisabled: {
-    backgroundColor: colors.buttonDisabled,
-  },
+    screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    flex1: {
+      flex: 1,
+    },
+    mainColumn: {
+      flex: 1,
+    },
+    list: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    listContent: {
+      flexGrow: 1,
+      paddingHorizontal: chatLayout.inputBarPaddingH,
+      paddingTop: chatLayout.listPaddingTop,
+    },
+    disclaimer: {
+      alignSelf: 'center',
+      backgroundColor: colors.secondaryMuted,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.m,
+      borderRadius: spacing.radiusLg,
+      marginBottom: spacing.lg,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.borderSubtle,
+    },
+    disclaimerText: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      fontWeight: '500',
+    },
+    inputBar: {
+      backgroundColor: colors.surface,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.borderSubtle,
+      paddingHorizontal: chatLayout.inputBarPaddingH,
+      paddingTop: chatLayout.inputBarPaddingTop,
+    },
   });
 }

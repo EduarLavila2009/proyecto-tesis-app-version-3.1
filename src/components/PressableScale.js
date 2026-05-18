@@ -1,8 +1,9 @@
 import React, { useRef } from 'react';
 import { TouchableOpacity, Animated } from 'react-native';
-import { hitSlopComfortable } from '../theme';
+import { hitSlopComfortable } from '../theme/accessibility';
+import { motion } from '../theme/motion';
 
-const SCALE_PRESSED = 0.96;
+const SCALE_PRESSED = motion.scale.pressed;
 
 /**
  * Presión con `activeOpacity={0.8}` y escala ligera vía `Animated` (`useNativeDriver: true`).
@@ -15,7 +16,7 @@ export default function PressableScale({
   onPress,
   onPressIn,
   onPressOut,
-  activeOpacity = 0.72,
+  activeOpacity = 1,
   hitSlop = hitSlopComfortable,
   ...rest
 }) {
@@ -24,9 +25,7 @@ export default function PressableScale({
   const springTo = (value) => {
     Animated.spring(scale, {
       toValue: value,
-      useNativeDriver: true,
-      friction: 6,
-      tension: 380,
+      ...motion.spring.press,
     }).start();
   };
 

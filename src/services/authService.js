@@ -150,12 +150,22 @@ export async function register(userData) {
     ).toLowerCase();
 
     let users = await storageService.getUsers();
+    const emailNorm = userData.email.trim().toLowerCase();
+    if (users.some((u) => u.email === emailNorm)) {
+      return {
+        success: false,
+        ok: false,
+        message: 'Ya existe una cuenta con este correo. Inicia sesión.',
+        code: 'EMAIL_EXISTS',
+      };
+    }
+
     const id = userData.id ?? generateUserId(users, roleKey);
 
     const finalUser = {
       id,
       name: userData.name.trim(),
-      email: userData.email.trim().toLowerCase(),
+      email: emailNorm,
       password: userData.password,
       role: roleKey,
       phone: typeof userData.phone === 'string' ? userData.phone.trim() : '',

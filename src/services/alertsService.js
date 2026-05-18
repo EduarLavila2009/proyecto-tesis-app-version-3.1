@@ -77,3 +77,16 @@ export async function markAllAlertsRead() {
   return next;
 }
 
+export async function getUnreadAlertsCount() {
+  const list = await getAlerts();
+  return list.filter((a) => !a.read).length;
+}
+
+/** Alertas de un paciente (para médico). */
+export async function getAlertsForPatient(patientId) {
+  const pid = String(patientId ?? '').trim();
+  if (!pid) return [];
+  const list = await getAlerts();
+  return list.filter((a) => a.patientId === pid);
+}
+

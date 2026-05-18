@@ -5,9 +5,8 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { ThemeProvider, useTheme } from './src/theme';
 
 /**
- * MEDICAL corp - App principal
- * Proyecto: Robot Mecánico Médico Personal
- * Tesis: Asistencia de salud pública integral con IA
+ * MEDICAL corp — Raíz de la aplicación.
+ * ThemeProvider: colores (#6200EE), tipografía (h1–caption), espaciado (s–xl), expo-system-ui.
  */
 function ThemedStatusBar() {
   const { isDark } = useTheme();

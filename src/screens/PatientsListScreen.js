@@ -4,18 +4,16 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  SafeAreaView,
   ActivityIndicator,
   Pressable,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
-import spacing from '../constants/spacing';
-import { fontSizes } from '../constants/typography';
-import { PressableScale } from '../components';
-import { useTheme } from '../theme';
+import { PressableScale, ScreenContainer } from '../components';
+import { spacing, typography, tabListContent, useTheme } from '../theme';
 import { getDoctorPatientLinks } from '../services/connectionService';
 
 /**
@@ -24,6 +22,7 @@ import { getDoctorPatientLinks } from '../services/connectionService';
  */
 export default function PatientsListScreen({ navigation }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [currentUser, setCurrentUser] = useState(null);
   const [patients, setPatients] = useState([]);
@@ -81,26 +80,26 @@ export default function PatientsListScreen({ navigation }) {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <ScreenContainer contentContainerStyle={styles.centeredWrap}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText} allowFontScaling>
             Cargando...
           </Text>
         </View>
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
   if (!currentUser || currentUser.role !== ROLES.DOCTOR) {
     return (
-      <SafeAreaView style={styles.container}>
+      <ScreenContainer contentContainerStyle={styles.centeredWrap}>
         <View style={styles.centered}>
           <Text style={styles.forbiddenText} allowFontScaling>
             Acceso restringido. Solo médicos pueden ver pacientes.
           </Text>
         </View>
-      </SafeAreaView>
+      </ScreenContainer>
     );
   }
 
@@ -159,13 +158,14 @@ export default function PatientsListScreen({ navigation }) {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ScreenContainer edges={['top', 'left', 'right']}>
       <FlatList
         data={patients}
         keyExtractor={(item, index) => item.id || item.email || `patient-${index}`}
         renderItem={renderItem}
         ListHeaderComponent={listHeader}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={tabListContent(insets)}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyText} allowFontScaling>
@@ -174,41 +174,35 @@ export default function PatientsListScreen({ navigation }) {
           </View>
         }
       />
-    </SafeAreaView>
+    </ScreenContainer>
   );
 }
 
 function createStyles(colors) {
   return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
+    centeredWrap: {
+      flexGrow: 1,
+      justifyContent: 'center',
     },
     centered: {
-      flex: 1,
-      justifyContent: 'center',
       alignItems: 'center',
       padding: spacing.xxl,
     },
     loadingText: {
-      fontSize: fontSizes.base,
+      ...typography.body,
       color: colors.textPrimary,
       marginTop: spacing.md,
     },
     forbiddenText: {
-      fontSize: fontSizes.base,
+      ...typography.body,
       color: colors.textSecondary,
       textAlign: 'center',
-    },
-    listContent: {
-      padding: spacing.lg,
-      paddingBottom: spacing.screen,
     },
     scanBanner: {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.surface,
-      borderRadius: spacing.radiusMd,
+      borderRadius: spacing.radiusInput,
       padding: spacing.md,
       marginBottom: spacing.lg,
       borderWidth: StyleSheet.hairlineWidth,
@@ -217,7 +211,7 @@ function createStyles(colors) {
     scanBannerIcon: {
       width: 44,
       height: 44,
-      borderRadius: spacing.radiusMd,
+      borderRadius: spacing.radiusInput,
       backgroundColor: `${colors.primary}14`,
       alignItems: 'center',
       justifyContent: 'center',
@@ -228,19 +222,19 @@ function createStyles(colors) {
       minWidth: 0,
     },
     scanBannerTitle: {
-      fontSize: fontSizes.lg,
+      ...typography.subtitle,
       fontWeight: '700',
       color: colors.textPrimary,
     },
     scanBannerSub: {
-      fontSize: fontSizes.sm,
+      ...typography.caption,
       color: colors.textSecondary,
       marginTop: 2,
     },
     card: {
       backgroundColor: colors.surface,
       padding: spacing.lg,
-      borderRadius: spacing.radiusMd,
+      borderRadius: spacing.radiusInput,
       marginBottom: spacing.md,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.borderSubtle,
@@ -253,7 +247,7 @@ function createStyles(colors) {
       marginBottom: spacing.xs,
     },
     cardName: {
-      fontSize: fontSizes.lg,
+      ...typography.subtitle,
       fontWeight: '600',
       color: colors.textPrimary,
       flex: 1,
@@ -265,21 +259,21 @@ function createStyles(colors) {
       gap: 4,
       paddingHorizontal: spacing.sm,
       paddingVertical: 4,
-      borderRadius: spacing.radiusMd,
+      borderRadius: spacing.radiusInput,
       backgroundColor: `${colors.primary}14`,
     },
     badgeText: {
-      fontSize: fontSizes.sm - 2,
+      ...typography.caption,
       fontWeight: '700',
       color: colors.primary,
     },
     cardId: {
-      fontSize: fontSizes.sm,
+      ...typography.caption,
       color: colors.primary,
       marginBottom: spacing.xs,
     },
     cardEmail: {
-      fontSize: fontSizes.sm,
+      ...typography.caption,
       color: colors.textSecondary,
     },
     emptyWrap: {
@@ -287,7 +281,7 @@ function createStyles(colors) {
       alignItems: 'center',
     },
     emptyText: {
-      fontSize: fontSizes.base,
+      ...typography.body,
       color: colors.textSecondary,
     },
   });

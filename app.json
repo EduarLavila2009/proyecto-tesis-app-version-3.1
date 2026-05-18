@@ -35,9 +35,17 @@
         }
       ],
       [
-        "expo-barcode-scanner",
+        "expo-camera",
         {
-          "cameraPermission": "Permite escanear el código QR del paciente para vincularlo con tu cuenta médica."
+          "cameraPermission": "Permite escanear el código QR del paciente para vincularlo con tu cuenta médica.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#6200EE"
         }
       ]
     ]
