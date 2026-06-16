@@ -24,8 +24,8 @@ export default function ChatComposer({
   sendDisabled,
   accessibilityLabel = 'Campo de mensaje',
 }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [focused, setFocused] = useState(false);
   const sendScale = useRef(new Animated.Value(1)).current;
   const canSend = !sendDisabled && String(value || '').trim().length > 0;
@@ -112,7 +112,7 @@ export default function ChatComposer({
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, isDark) {
   return StyleSheet.create({
     row: {
       flexDirection: 'row',
@@ -125,7 +125,7 @@ function createStyles(colors) {
       borderWidth: 1,
       borderColor: colors.borderSubtle,
       borderRadius: spacing.radiusXl,
-      backgroundColor: colors.surface,
+      backgroundColor: isDark ? 'rgba(17, 24, 39, 0.65)' : 'rgba(255, 255, 255, 0.85)',
       paddingHorizontal: spacing.m,
       paddingVertical: Platform.OS === 'ios' ? spacing.sm : spacing.xs,
       minHeight: chatLayout.inputMinHeight,

@@ -1,10 +1,10 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-
-import { Card, PressableScale, ScreenContainer } from '../components';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { GlassmorphicCard, PressableScale, ScreenContainer } from '../components';
 import { spacing, typography, layout, stackScrollContent, useTheme } from '../theme';
 import { getAlerts, markAllAlertsRead } from '../services/alertsService';
 
@@ -37,11 +37,23 @@ export default function AlertsScreen() {
     const accent = isCritical ? colors.danger : colors.warning;
     const icon = isCritical ? 'alert-circle' : 'warning';
 
+    const handlePress = () => {
+      try {
+        const Haptics = require('expo-haptics');
+        if (Platform.OS !== 'web') {
+          Haptics.selectionAsync();
+        }
+      } catch (_) {}
+    };
+
     return (
-      <PressableScale style={styles.itemPressable} accessibilityRole="button">
-        <Card style={styles.itemCard}>
+      <PressableScale onPress={handlePress} style={styles.itemPressable} accessibilityRole="button">
+        <GlassmorphicCard
+          style={styles.itemCard}
+          alertType={item.level}
+        >
           <View style={styles.itemTop}>
-            <View style={[styles.iconWrap, { backgroundColor: `${accent}14` }]}>
+            <View style={[styles.iconWrap, { backgroundColor: `${accent}14`, borderColor: `${accent}33` }]}>
               <Ionicons name={icon} size={18} color={accent} />
             </View>
             <View style={styles.itemText}>
@@ -61,7 +73,7 @@ export default function AlertsScreen() {
           <Text style={styles.subtitle} allowFontScaling>
             {item.subtitle || '—'}
           </Text>
-        </Card>
+        </GlassmorphicCard>
       </PressableScale>
     );
   };
@@ -75,14 +87,17 @@ export default function AlertsScreen() {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Card style={styles.emptyCard}>
-            <Text style={styles.emptyTitle} allowFontScaling>
-              Sin alertas
-            </Text>
+          <GlassmorphicCard style={styles.emptyCard} alertType="success">
+            <View style={styles.emptyHeaderRow}>
+              <Ionicons name="checkmark-circle-outline" size={24} color={colors.success} />
+              <Text style={styles.emptyTitle} allowFontScaling>
+                Sin alertas activas
+              </Text>
+            </View>
             <Text style={styles.emptyText} allowFontScaling>
-              Cuando se detecten valores anormales, aparecerán aquí como notificaciones internas.
+              Tu estado clínico se encuentra estable y monitoreado. Si se detectan valores anormales, aparecerán aquí de forma inmediata.
             </Text>
-          </Card>
+          </GlassmorphicCard>
         }
       />
     </ScreenContainer>
@@ -109,52 +124,60 @@ function createStyles(colors, insets) {
       marginBottom: spacing.sm,
     },
     iconWrap: {
-      width: 34,
-      height: 34,
+      width: 36,
+      height: 36,
       borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.borderSubtle,
+      borderWidth: 1,
     },
     itemText: {
       flex: 1,
       minWidth: 0,
     },
     itemTitle: {
-      fontSize: typography.subtitle.fontSize,
+      fontSize: 14,
       fontWeight: '800',
       color: colors.textPrimary,
     },
     itemPatient: {
       marginTop: 2,
-      fontSize: typography.caption.fontSize,
+      fontSize: 11,
       color: colors.textSecondary,
+      fontWeight: '600',
     },
     when: {
-      fontSize: typography.caption.fontSize,
-      color: colors.textSecondary,
+      fontSize: 11,
+      color: colors.textPlaceholder,
+      fontWeight: '600',
     },
     subtitle: {
-      fontSize: typography.body.fontSize,
+      fontSize: 13,
       color: colors.textSecondary,
-      lineHeight: typography.body.fontSize * 1.45,
+      lineHeight: 18,
+      fontWeight: '500',
+      paddingLeft: 36 + spacing.md,
     },
     emptyCard: {
       padding: spacing.lg,
-      borderRadius: spacing.radiusLg,
     },
-    emptyTitle: {
-      fontSize: typography.subtitle.fontSize,
-      fontWeight: '800',
-      color: colors.textPrimary,
+    emptyHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
       marginBottom: spacing.sm,
     },
+    emptyTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: colors.textPrimary,
+    },
     emptyText: {
-      fontSize: typography.body.fontSize,
+      fontSize: 13,
       color: colors.textSecondary,
-      lineHeight: typography.body.fontSize * 1.5,
+      lineHeight: 18.5,
+      fontWeight: '500',
+      paddingLeft: 24 + spacing.sm,
     },
   });
 }
-

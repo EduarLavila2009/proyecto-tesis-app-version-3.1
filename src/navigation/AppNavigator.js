@@ -34,6 +34,12 @@ import LoginScreen from '../screens/LoginScreen';
 
 import RegisterScreen from '../screens/RegisterScreen';
 
+import PatientRegistrationScreen from '../screens/PatientRegistrationScreen';
+
+import PatientVerificationScreen from '../screens/PatientVerificationScreen';
+
+import ManualVerificationScreen from '../screens/ManualVerificationScreen';
+
 import EditProfileScreen from '../screens/EditProfileScreen';
 
 import RobotFunctionsScreen from '../screens/RobotFunctionsScreen';
@@ -50,6 +56,7 @@ import AlertsScreen from '../screens/AlertsScreen';
 
 import SettingsScreen from '../screens/SettingsScreen';
 import PatientWellnessScreen from '../screens/PatientWellnessScreen';
+import VideoCallScreen from '../screens/VideoCallScreen';
 
 
 
@@ -219,6 +226,36 @@ export default function AppNavigator() {
 
         <Stack.Screen
 
+          name="PatientRegistration"
+
+          component={PatientRegistrationScreen}
+
+          options={{ title: 'Registro de Paciente' }}
+
+        />
+
+        <Stack.Screen
+
+          name="PatientVerification"
+
+          component={PatientVerificationScreen}
+
+          options={{ title: 'Verificar Paciente' }}
+
+        />
+
+        <Stack.Screen
+
+          name="ManualVerification"
+
+          component={ManualVerificationScreen}
+
+          options={{ title: 'Verificación Manual' }}
+
+        />
+
+        <Stack.Screen
+
           name="MainTabs"
 
           component={MainTabsGate}
@@ -247,6 +284,12 @@ export default function AppNavigator() {
           name="PatientWellness"
           component={PatientWellnessScreen}
           options={{ title: 'Cuidado y recordatorios' }}
+        />
+
+        <Stack.Screen
+          name="VideoCall"
+          component={VideoCallScreen}
+          options={{ headerShown: false }}
         />
 
       </Stack.Navigator>

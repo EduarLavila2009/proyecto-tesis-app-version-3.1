@@ -5,6 +5,21 @@ import {
   DEFAULT_MEDICAL_HISTORY,
 } from '../constants/storage';
 import * as storageService from './storageService';
+import { auth, db, isFirebaseDisabled } from './firebase';
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
+import {
+  doc,
+  setDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+} from 'firebase/firestore';
+import { runWithTimeout } from '../utils/promiseTimeout';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -13,11 +28,7 @@ function isValidEmailFormat(email) {
 }
 
 /**
- * Validación de campos del formulario de login (mismas reglas que LoginScreen).
- *
- * @param {string} email
- * @param {string} password
- * @returns {{ valid: boolean, errors: { email?: string, password?: string } }}
+ * Validación de campos del formulario de login.
  */
 export function validateLoginInput(email, password) {
   const errors = {};
@@ -36,28 +47,134 @@ export function validateLoginInput(email, password) {
 }
 
 /**
- * Genera el siguiente ID según rol: PAC-0001, MED-0001, etc. (alineado con RegisterScreen).
- * @param {Array} users
- * @param {string} role
- * @returns {string}
+ * Genera el ID clínico compatible (ej: PAC-4829, MED-1083).
  */
-function generateUserId(users, role) {
+function generateUserId(role) {
   const prefix = role === ROLES.DOCTOR ? 'MED' : 'PAC';
-  const samePrefix = (users || []).filter((u) => u.id && u.id.startsWith(prefix));
-  const numbers = samePrefix
-    .map((u) => parseInt(u.id.replace(prefix, ''), 10))
-    .filter((n) => !Number.isNaN(n));
-  const nextNum = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
-  return `${prefix}-${String(nextNum).padStart(4, '0')}`;
+  const randomDigits = String(Math.floor(1000 + Math.random() * 9000));
+  return `${prefix}-${randomDigits}`;
+}
+
+const isOfflineOrInvalidKey = (error) => {
+  const code = error?.code || '';
+  const message = error?.message || '';
+  return (
+    code.includes('api-key-not-valid') ||
+    code.includes('invalid-api-key') ||
+    code.includes('network-request-failed') ||
+    message.includes('api-key-not-valid') ||
+    message.includes('invalid-api-key') ||
+    message.includes('TIMEOUT_ERROR') ||
+    message.includes('network')
+  );
+};
+
+export async function registerLocalOffline(userData) {
+  try {
+    const emailNorm = userData.email.trim().toLowerCase();
+
+    // 1. Obtener todos los usuarios registrados localmente
+    const users = await storageService.getUsers();
+
+    // 2. Verificar si el email ya existe localmente
+    const emailExists = users.some((u) => u.email === emailNorm);
+    if (emailExists) {
+      return {
+        success: false,
+        ok: false,
+        message: 'Ya existe una cuenta con este correo. Inicia sesión.',
+        code: 'EMAIL_EXISTS',
+      };
+    }
+
+    // 3. Generar IDs y crear el objeto de usuario local
+    const roleFromStorage = await AsyncStorage.getItem(STORAGE_KEYS.ROLE);
+    const roleKey = (userData.role || roleFromStorage || ROLES.PATIENT).toLowerCase();
+    const id = userData.id ?? generateUserId(roleKey);
+    const localUid = `local-uid-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    const finalUser = {
+      id,
+      uid: localUid,
+      name: userData.name.trim(),
+      email: emailNorm,
+      role: roleKey,
+      phone: typeof userData.phone === 'string' ? userData.phone.trim() : '',
+      avatar: typeof userData.avatar === 'string' ? userData.avatar : '',
+      medicalHistory: {
+        ...DEFAULT_MEDICAL_HISTORY,
+        ...(userData.medicalHistory || {}),
+      },
+      createdAt: new Date().toISOString(),
+      password: userData.password, // Almacenar para validación offline
+    };
+
+    // 4. Guardar en la lista local de usuarios
+    users.push(finalUser);
+    await storageService.saveUsers(users);
+
+    // 5. Guardar sesión activa localmente (sin el password para que no flote en la sesión)
+    const { password: _ignore, ...sessionUser } = finalUser;
+    await storageService.saveUser(sessionUser);
+
+    return { success: true, ok: true, user: sessionUser };
+  } catch (localErr) {
+    console.error('Error en registerLocalOffline:', localErr);
+    return {
+      success: false,
+      ok: false,
+      message: 'No se pudo completar el registro local offline.',
+      code: 'OFFLINE_ERROR',
+    };
+  }
+}
+
+export async function loginLocalOffline(email, password) {
+  try {
+    const emailNorm = String(email).trim().toLowerCase();
+
+    // 1. Obtener todos los usuarios registrados localmente
+    const users = await storageService.getUsers();
+
+    // 2. Buscar por email
+    const user = users.find((u) => u.email === emailNorm);
+    if (!user) {
+      return {
+        success: false,
+        ok: false,
+        message: 'Credenciales incorrectas. Regístrate si no tienes cuenta.',
+        code: 'INVALID_CREDENTIALS',
+      };
+    }
+
+    // 3. Validar contraseña
+    if (user.password && user.password !== password) {
+      return {
+        success: false,
+        ok: false,
+        message: 'Credenciales incorrectas. Regístrate si no tienes cuenta.',
+        code: 'INVALID_CREDENTIALS',
+      };
+    }
+
+    // 4. Guardar sesión activa localmente (sin el password)
+    const { password: _ignore, ...sessionUser } = user;
+    await storageService.saveUser(sessionUser);
+
+    return { success: true, ok: true, user: sessionUser };
+  } catch (localErr) {
+    console.error('Error en loginLocalOffline:', localErr);
+    return {
+      success: false,
+      ok: false,
+      message: 'No se pudo iniciar sesión localmente offline.',
+      code: 'OFFLINE_ERROR',
+    };
+  }
 }
 
 /**
- * Inicia sesión: valida el formulario, busca en la lista de usuarios; si no hay coincidencia, compatibilidad con USER guardado.
- *
- * @returns {Promise<
- *   | { success: true, ok: true, user: object }
- *   | { success: false, ok: false, message: string, code: string, errors?: { email?: string, password?: string }, error?: Error }
- * >}
+ * Inicia sesión con Firebase Auth y busca el perfil clínico en Firestore por UID.
  */
 export async function login(email, password) {
   const { valid, errors: validationErrors } = validateLoginInput(email, password);
@@ -75,53 +192,82 @@ export async function login(email, password) {
     };
   }
 
+  if (isFirebaseDisabled) {
+    console.log('authService.login: Firebase desactivado, usando login local offline');
+    return await loginLocalOffline(email, password);
+  }
+
   try {
     const emailTrim = String(email).trim().toLowerCase();
 
-    const users = await storageService.getUsers();
-    const fromList = users.find(
-      (u) => u.email === emailTrim && u.password === password
+    // 1. Autenticar con Firebase Auth
+    const userCredential = await runWithTimeout(
+      signInWithEmailAndPassword(auth, emailTrim, password),
+      2500
     );
-    if (fromList) {
-      await storageService.saveUser(fromList);
-      return { success: true, ok: true, user: fromList };
+    const fbUser = userCredential.user;
+
+    // 2. Buscar en Firestore el perfil del usuario que contenga la UID correspondiente
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('uid', '==', fbUser.uid));
+    const querySnapshot = await runWithTimeout(getDocs(q), 2500);
+
+    let userData;
+    if (!querySnapshot.empty) {
+      userData = querySnapshot.docs[0].data();
+    } else {
+      // Si no existe, creamos un perfil básico con la UID
+      const clinicalId = generateUserId(ROLES.PATIENT);
+      userData = {
+        id: clinicalId,
+        uid: fbUser.uid,
+        name: fbUser.displayName || 'Paciente Clínico',
+        email: emailTrim,
+        role: ROLES.PATIENT,
+        medicalHistory: { ...DEFAULT_MEDICAL_HISTORY },
+        createdAt: new Date().toISOString(),
+      };
+      await runWithTimeout(
+        setDoc(doc(db, 'users', clinicalId), userData),
+        2500
+      );
     }
 
-    const storedUser = await storageService.getUser();
-    if (
-      storedUser &&
-      storedUser.email === emailTrim &&
-      storedUser.password === password
-    ) {
-      await storageService.saveUser(storedUser);
-      return { success: true, ok: true, user: storedUser };
-    }
+    // 3. Guardar sesión local
+    await storageService.saveUser(userData);
 
-    return {
-      success: false,
-      ok: false,
-      message: 'Credenciales incorrectas. Regístrate si no tienes cuenta.',
-      code: 'INVALID_CREDENTIALS',
-    };
+    return { success: true, ok: true, user: userData };
   } catch (error) {
-    console.error('authService.login', error);
+    console.error('authService.login error:', error);
+
+    if (isOfflineOrInvalidKey(error)) {
+      console.log('authService.login: Fallo de Firebase, intentando login local offline');
+      return await loginLocalOffline(email, password);
+    }
+
+    let message = 'Ocurrió un error al iniciar sesión.';
+    let code = 'AUTH_ERROR';
+    if (
+      error.code === 'auth/invalid-credential' ||
+      error.code === 'auth/user-not-found' ||
+      error.code === 'auth/wrong-password' ||
+      error.code === 'auth/invalid-email'
+    ) {
+      message = 'Credenciales incorrectas. Regístrate si no tienes cuenta.';
+      code = 'INVALID_CREDENTIALS';
+    }
     return {
       success: false,
       ok: false,
-      message: 'Ocurrió un error al iniciar sesión.',
-      code: 'STORAGE_ERROR',
+      message,
+      code,
       error,
     };
   }
 }
 
 /**
- * Registra un usuario: añade a la lista, guarda sesión. Incluye rol, ID e historial por defecto (compatibilidad con el modelo actual).
- *
- * @returns {Promise<
- *   | { success: true, ok: true, user: object }
- *   | { success: false, ok: false, message: string, code?: string, error?: Error }
- * >}
+ * Registra un usuario en Firebase Auth y guarda su perfil en Firestore indexado por ID clínico.
  */
 export async function register(userData) {
   try {
@@ -142,6 +288,11 @@ export async function register(userData) {
       };
     }
 
+    if (isFirebaseDisabled) {
+      console.log('authService.register: Firebase desactivado, usando registro local offline');
+      return await registerLocalOffline(userData);
+    }
+
     const roleFromStorage = await AsyncStorage.getItem(STORAGE_KEYS.ROLE);
     const roleKey = (
       userData.role ||
@@ -149,24 +300,23 @@ export async function register(userData) {
       ROLES.PATIENT
     ).toLowerCase();
 
-    let users = await storageService.getUsers();
     const emailNorm = userData.email.trim().toLowerCase();
-    if (users.some((u) => u.email === emailNorm)) {
-      return {
-        success: false,
-        ok: false,
-        message: 'Ya existe una cuenta con este correo. Inicia sesión.',
-        code: 'EMAIL_EXISTS',
-      };
-    }
 
-    const id = userData.id ?? generateUserId(users, roleKey);
+    // 1. Crear usuario en Firebase Auth
+    const userCredential = await runWithTimeout(
+      createUserWithEmailAndPassword(auth, emailNorm, userData.password),
+      2500
+    );
+    const fbUser = userCredential.user;
+
+    // 2. Generar el ID clínico de tesis
+    const id = userData.id ?? generateUserId(roleKey);
 
     const finalUser = {
       id,
+      uid: fbUser.uid,
       name: userData.name.trim(),
       email: emailNorm,
-      password: userData.password,
       role: roleKey,
       phone: typeof userData.phone === 'string' ? userData.phone.trim() : '',
       avatar: typeof userData.avatar === 'string' ? userData.avatar : '',
@@ -174,35 +324,55 @@ export async function register(userData) {
         ...DEFAULT_MEDICAL_HISTORY,
         ...(userData.medicalHistory || {}),
       },
+      createdAt: new Date().toISOString(),
     };
 
-    users.push(finalUser);
-    await storageService.saveUsers(users);
+    // 3. Guardar perfil clínico en Firestore indexado por 'id' clínico (ej: PAC-3829)
+    await runWithTimeout(
+      setDoc(doc(db, 'users', id), finalUser),
+      2500
+    );
+
+    // 4. Guardar sesión activa localmente
     await storageService.saveUser(finalUser);
 
     return { success: true, ok: true, user: finalUser };
   } catch (error) {
-    console.error('authService.register', error);
+    console.error('authService.register error:', error);
+
+    if (isOfflineOrInvalidKey(error)) {
+      console.log('authService.register: Fallo de Firebase, intentando registro local offline');
+      return await registerLocalOffline(userData);
+    }
+
+    let message = 'No se pudo completar el registro.';
+    let code = 'AUTH_ERROR';
+    if (error.code === 'auth/email-already-in-use') {
+      message = 'Ya existe una cuenta con este correo. Inicia sesión.';
+      code = 'EMAIL_EXISTS';
+    }
     return {
       success: false,
       ok: false,
-      message: 'No se pudo completar el registro.',
-      code: 'STORAGE_ERROR',
+      message,
+      code,
       error,
     };
   }
 }
 
 /**
- * Cierra sesión (elimina usuario actual en AsyncStorage).
- *
- * @returns {Promise<
- *   | { success: true, ok: true }
- *   | { success: false, ok: false, message: string, code?: string, error?: Error }
- * >}
+ * Cierra la sesión en Firebase Auth y limpia AsyncStorage.
  */
 export async function logout() {
   try {
+    if (!isFirebaseDisabled) {
+      try {
+        await signOut(auth);
+      } catch (authErr) {
+        console.warn('Fallo de signOut en Firebase:', authErr.message);
+      }
+    }
     await storageService.removeUser();
     return { success: true, ok: true };
   } catch (error) {
@@ -211,7 +381,7 @@ export async function logout() {
       success: false,
       ok: false,
       message: 'No se pudo cerrar la sesión.',
-      code: 'STORAGE_ERROR',
+      code: 'AUTH_ERROR',
       error,
     };
   }

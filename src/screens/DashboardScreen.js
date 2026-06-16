@@ -5,20 +5,22 @@ import {
   StyleSheet,
   Alert,
   Animated,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import { STORAGE_KEYS } from '../constants/storage';
 import {
-  Card,
-  PrimaryButton,
-  SecondaryButton,
   MetricTile,
   MedicalAlertBanner,
   TabScreenLayout,
+  GlassmorphicCard,
+  LiveHeartRateCard,
+  PressableScale,
 } from '../components';
-import { spacing, typography, useTheme, createSectionHeadingStyle, createCardTitleStyle } from '../theme';
+import { spacing, typography, useTheme, createSectionHeadingStyle, createCardTitleStyle, scale, layout } from '../theme';
 import { useMetricsGridLayout } from '../hooks/useMetricsGridLayout';
 import {
   evaluateMonitoringAlert,
@@ -30,28 +32,25 @@ import {
   SIM_TEMP_C,
 } from '../utils/vitalsMonitoring';
 import { recordMedicalAlert } from '../services/alertsService';
-import { getLatestMedicalRecord } from '../services/medicalRecordsService';
+import { getLatestMedicalRecord, getMedicalRecordsByUser } from '../services/medicalRecordsService';
 
-const RECENT_RECORDS = [
-  {
-    id: '1',
-    time: 'Hoy 08:42',
-    detail: 'Medición automática — FC estable, sin eventos.',
-    source: 'auto',
-  },
-  {
-    id: '2',
-    time: 'Ayer 21:15',
-    detail: 'Recordatorio: hidratación adecuada.',
-    source: 'manual',
-  },
-  {
-    id: '3',
-    time: 'Hace 2 días',
-    detail: 'Sincronización de dispositivo completada.',
-    source: 'auto',
-  },
-];
+function formatRecordTime(dateString) {
+  if (!dateString) return '—';
+  const d = new Date(dateString);
+  if (Number.isNaN(d.getTime())) return '—';
+
+  const diffMs = Date.now() - d.getTime();
+  const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  if (diffDays === 0) {
+    return `Hoy ${timeStr}`;
+  } else if (diffDays === 1) {
+    return `Ayer ${timeStr}`;
+  } else {
+    return `Hace ${diffDays} d`;
+  }
+}
 
 const METRICS_ANIM_MS = 520;
 
@@ -64,10 +63,11 @@ function alertLevelForMetric(reasons, prefix) {
 }
 
 export default function DashboardScreen({ navigation }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { gridStyle, tileWidth } = useMetricsGridLayout();
   const [patientName, setPatientName] = useState('Paciente');
+  const [recentRecords, setRecentRecords] = useState([]);
   const [vitals, setVitals] = useState({
     heartRate: SIM_HEART_RATE_BPM,
     temperature: SIM_TEMP_C,
@@ -111,15 +111,26 @@ export default function DashboardScreen({ navigation }) {
           const u = JSON.parse(raw);
           if (u?.name) setPatientName(u.name);
           if (u?.id) {
-            const latest = await getLatestMedicalRecord(String(u.id));
-            if (latest?.bloodPressure) {
-              setVitals({
-                heartRate: latest.heartRate,
-                temperature: latest.temperature,
-                systolic: latest.bloodPressure.systolic,
-                diastolic: latest.bloodPressure.diastolic,
-                oxygen: latest.oxygen,
-              });
+            const list = await getMedicalRecordsByUser(String(u.id));
+            if (!cancelled) {
+              const mapped = list.slice(0, 3).map((r) => ({
+                id: r.id,
+                time: formatRecordTime(r.date),
+                detail: `Ritmo cardíaco: ${r.heartRate} bpm · SpO₂: ${r.oxygen}% · PA: ${r.bloodPressure.systolic}/${r.bloodPressure.diastolic} · Temp: ${r.temperature}°C`,
+                source: r.source || 'manual',
+              }));
+              setRecentRecords(mapped);
+
+              const latest = list[0];
+              if (latest?.bloodPressure) {
+                setVitals({
+                  heartRate: latest.heartRate,
+                  temperature: latest.temperature,
+                  systolic: latest.bloodPressure.systolic,
+                  diastolic: latest.bloodPressure.diastolic,
+                  oxygen: latest.oxygen,
+                });
+              }
             }
           }
         } catch (_) {
@@ -139,8 +150,8 @@ export default function DashboardScreen({ navigation }) {
     vitals.oxygen
   );
   const isAlert = isAlertStatus(status.level);
-  const statusWord = isAlert ? 'Alerta' : 'Normal';
-  const statusColor = isAlert ? colors.danger : colors.secondary;
+  const statusWord = isAlert ? 'Alerta' : 'Estable';
+  const statusColor = isAlert ? colors.danger : colors.success;
 
   const bpLabel = `${vitals.systolic}/${vitals.diastolic}`;
   const reasons = status.reasons ?? [];
@@ -196,67 +207,131 @@ export default function DashboardScreen({ navigation }) {
     }, [isAlert, status.level, status.title, status.subtitle, status.reasons, vitals])
   );
 
+  const handleAlertPress = () => {
+    try {
+      const Haptics = require('expo-haptics');
+      if (Platform.OS !== 'web') {
+        Haptics.selectionAsync();
+      }
+    } catch (_) {}
+    navigation.navigate('Alerts');
+  };
+
+  const alertGlowType = status.level === 'stable' ? 'success' : status.level;
+
   return (
     <TabScreenLayout scrollProps={{ showsVerticalScrollIndicator: false }}>
       {isAlert ? (
         <MedicalAlertBanner
           title="Alerta médica"
           subtitle={status.subtitle}
-          onPress={() => navigation.navigate('Alerts')}
+          onPress={handleAlertPress}
         />
       ) : null}
 
-      <Card style={styles.heroCard}>
-        <Text style={styles.greeting} allowFontScaling accessibilityRole="header">
-          Hola, {patientName}
-        </Text>
-        <View style={styles.statusPillRow}>
-          <Text style={styles.statusIntro} allowFontScaling>
-            Estado:{' '}
-          </Text>
-          <View
-            style={[
-              styles.statusBadge,
-              { backgroundColor: isAlert ? colors.danger + '18' : colors.secondaryMuted },
-            ]}
-          >
-            <Text style={[styles.statusBadgeText, { color: statusColor }]} allowFontScaling>
-              {statusWord}
+      {/* Hero Header Card */}
+      <GlassmorphicCard
+        style={styles.heroCard}
+        alertType={alertGlowType}
+      >
+        <View style={styles.heroHeader}>
+          <View style={styles.avatarPlaceholder}>
+            <Ionicons name="person" size={20} color={colors.primary} />
+          </View>
+          <View style={styles.heroTitleWrap}>
+            <Text style={styles.greeting} allowFontScaling accessibilityRole="header">
+              Hola, {patientName} 👋
             </Text>
+            <Text style={styles.heroSubtitle}>Bienvenido a tu panel de salud en tiempo real</Text>
           </View>
         </View>
-        {isAlert ? (
-          <Text style={styles.alertShout} allowFontScaling accessibilityRole="alert">
-            ¡Alerta!
+
+        <View style={styles.divider} />
+
+        {/* Panel de Alertas Inteligente / Triage Widget */}
+        <PressableScale onPress={handleAlertPress} style={styles.triagePressable}>
+          <View style={styles.statusPillRow}>
+            <Ionicons
+              name={isAlert ? 'warning-outline' : 'shield-checkmark-outline'}
+              size={18}
+              color={statusColor}
+              style={styles.statusIcon}
+            />
+            <Text style={styles.statusIntro} allowFontScaling>
+              Monitoreo Fisiológico:
+            </Text>
+            <View
+              style={[
+                styles.statusBadge,
+                {
+                  backgroundColor: isAlert ? 'rgba(239, 68, 68, 0.08)' : 'rgba(16, 185, 129, 0.08)',
+                  borderColor: isAlert ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                  borderWidth: 1,
+                },
+              ]}
+            >
+              <Text style={[styles.statusBadgeText, { color: statusColor }]} allowFontScaling>
+                {statusWord.toUpperCase()}
+              </Text>
+            </View>
+          </View>
+          
+          <Text style={styles.hint} allowFontScaling>
+            {status.subtitle}
           </Text>
-        ) : null}
-        <Text style={styles.hint} allowFontScaling>
-          {status.subtitle}
-        </Text>
-      </Card>
+        </PressableScale>
+      </GlassmorphicCard>
 
-      <Card style={styles.actionsCard}>
-        <Text style={styles.cardTitle} allowFontScaling>
-          Acciones rápidas
-        </Text>
-        <PrimaryButton
-          title="Ver historial completo"
-          icon="calendar-outline"
+      {/* Acciones Rápidas Unificadas */}
+      <View style={styles.quickActionsRow}>
+        <PressableScale
           onPress={() => navigation.navigate('History')}
-          style={styles.actionBtnLarge}
+          style={styles.quickActionBtn}
           accessibilityLabel="Ver historial médico completo"
-        />
-        <SecondaryButton
-          title="IA médica"
-          icon="sparkles-outline"
+        >
+          <LinearGradient
+            colors={['#0F766E', '#0D9488']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.quickActionGradient}
+          >
+            <Ionicons name="calendar-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.quickActionText}>Ver Historial</Text>
+          </LinearGradient>
+        </PressableScale>
+        
+        <View style={styles.quickActionGap} />
+        
+        <PressableScale
           onPress={() => navigation.navigate('MedicalAI')}
-          style={styles.actionBtnLast}
+          style={styles.quickActionBtn}
           accessibilityLabel="Abrir asistente de IA médica"
-        />
-      </Card>
+        >
+          <LinearGradient
+            colors={['#2563EB', '#1D4ED8']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.quickActionGradientBlue}
+          >
+            <Ionicons name="sparkles-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.quickActionText}>IA Médica</Text>
+          </LinearGradient>
+        </PressableScale>
+      </View>
 
+      {/* Monitoreo Cardiovascular */}
       <Text style={styles.sectionHeading} allowFontScaling>
-        Métricas vitales
+        Monitoreo Cardiovascular
+      </Text>
+      <LiveHeartRateCard
+        heartRate={vitals.heartRate}
+        statusLevel={status.level}
+        onPress={() => navigation.navigate('History')}
+      />
+
+      {/* Otras Métricas Vitales */}
+      <Text style={styles.sectionHeading} allowFontScaling>
+        Otras Métricas Vitales
       </Text>
       <Animated.View
         style={[
@@ -269,175 +344,270 @@ export default function DashboardScreen({ navigation }) {
         ]}
         accessibilityLabel="Métricas vitales"
       >
-        {metricItems.map((item) => (
-          <MetricTile
-            key={item.id}
-            icon={item.icon}
-            value={item.value}
-            label={item.label}
-            width={tileWidth}
-            alertLevel={item.alertLevel}
-            onPress={() => navigation.navigate('History')}
-          />
-        ))}
+        {metricItems
+          .filter((item) => item.id !== 'hr')
+          .map((item) => (
+            <MetricTile
+              key={item.id}
+              icon={item.icon}
+              value={item.value}
+              label={item.label}
+              width={tileWidth}
+              alertLevel={item.alertLevel}
+              onPress={() => navigation.navigate('History')}
+            />
+          ))}
       </Animated.View>
 
-      <Card style={styles.recordsCard}>
+      {/* Historial Timeline de Últimos Registros */}
+      <GlassmorphicCard style={styles.recordsCard}>
         <Text style={styles.cardTitle} allowFontScaling>
           Últimos registros
         </Text>
-        {RECENT_RECORDS.map((row, index) => {
-          const isAuto = row.source === 'auto';
-          const iconName = isAuto ? 'pulse-outline' : 'create-outline';
-          return (
-            <View
-              key={row.id}
-              style={[
-                styles.recordBlock,
-                index === RECENT_RECORDS.length - 1 && styles.recordBlockLast,
-              ]}
-            >
-              <View style={styles.recordHeaderRow}>
-                <View style={styles.recordIconWrap}>
-                  <Ionicons name={iconName} size={16} color={colors.primary} />
+        <View style={styles.timelineWrapper}>
+          {recentRecords.length > 0 ? (
+            recentRecords.map((row, index) => {
+              const isAuto = row.source === 'auto';
+              const iconName = isAuto ? 'pulse-outline' : 'create-outline';
+              return (
+                <View key={row.id} style={styles.timelineItem}>
+                  {/* Línea vertical conectora */}
+                  {index < recentRecords.length - 1 ? (
+                    <View style={styles.timelineLine} />
+                  ) : null}
+                  
+                  {/* Icono de registro */}
+                  <View style={styles.timelineBulletWrap}>
+                    <View style={styles.recordIconWrap}>
+                      <Ionicons name={iconName} size={15} color={colors.primary} />
+                    </View>
+                  </View>
+  
+                  {/* Contenido de la fila */}
+                  <View style={styles.timelineContent}>
+                    <View style={styles.recordHeaderRow}>
+                      <Text style={styles.recordTime} allowFontScaling>
+                        {row.time}
+                      </Text>
+                      <View style={styles.sourceTag}>
+                        <Text style={styles.sourceTagText}>
+                          {isAuto ? 'AUTO' : 'MANUAL'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.recordDetail} allowFontScaling>
+                      {row.detail}
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.recordHeaderText}>
-                  <Text style={styles.recordTime} allowFontScaling>
-                    {row.time}
-                  </Text>
-                  <Text style={styles.recordSource} allowFontScaling>
-                    {isAuto ? 'Automático' : 'Manual'}
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.recordDetail} allowFontScaling>
-                {row.detail}
-              </Text>
-            </View>
-          );
-        })}
-      </Card>
+              );
+            })
+          ) : (
+            <Text style={styles.emptyRecordsText} allowFontScaling>
+              No hay mediciones registradas. Agrega tu primer registro en la pestaña Historial.
+            </Text>
+          )}
+        </View>
+      </GlassmorphicCard>
     </TabScreenLayout>
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, isDark) {
   return StyleSheet.create({
     heroCard: {
-      marginBottom: spacing.lg,
-    },
-    sectionHeading: createSectionHeadingStyle(colors),
-    greeting: {
-      ...typography.title,
-      color: colors.textPrimary,
-      textAlign: 'left',
-      width: '100%',
-      letterSpacing: -0.3,
       marginBottom: spacing.md,
+      padding: spacing.lg,
+    },
+    heroHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    avatarPlaceholder: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: 'rgba(13, 148, 136, 0.08)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(13, 148, 136, 0.15)',
+    },
+    heroTitleWrap: {
+      flex: 1,
+    },
+    greeting: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      letterSpacing: -0.3,
+    },
+    heroSubtitle: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginTop: 1,
+    },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.borderSubtle,
+      marginVertical: spacing.md,
+    },
+    triagePressable: {
+      width: '100%',
     },
     statusPillRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
       alignItems: 'center',
-      marginTop: spacing.xs,
+      gap: spacing.xs,
+    },
+    statusIcon: {
+      marginRight: 1,
     },
     statusIntro: {
-      fontSize: typography.body.fontSize,
-      fontWeight: typography.body.fontWeight,
-      color: colors.textPrimary,
-      marginRight: spacing.sm,
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textSecondary,
     },
     statusBadge: {
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.md,
-      borderRadius: spacing.radiusButton,
+      paddingVertical: 1,
+      paddingHorizontal: 8,
+      borderRadius: 8,
     },
     statusBadgeText: {
-      fontSize: typography.subtitle.fontSize,
-      fontWeight: '700',
-    },
-    alertShout: {
-      marginTop: spacing.md,
-      fontSize: typography.subtitle.fontSize + 2,
-      fontWeight: '800',
-      color: colors.danger,
-      letterSpacing: 0.2,
+      fontSize: 10,
+      fontWeight: '900',
+      letterSpacing: 0.5,
     },
     hint: {
-      fontSize: typography.caption.fontSize,
-      fontWeight: typography.caption.fontWeight,
-      color: colors.textSecondary,
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textPrimary,
       marginTop: spacing.sm,
-      lineHeight: typography.caption.fontSize * 1.5,
+      lineHeight: 17,
     },
-    actionsCard: {
-      marginBottom: spacing.xl,
+    sectionHeading: createSectionHeadingStyle(colors),
+    quickActionsRow: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      marginTop: spacing.xs,
+      marginBottom: spacing.lg,
+    },
+    quickActionBtn: {
+      flex: 1,
+      minWidth: 0,
+      borderRadius: spacing.radiusButton,
+      overflow: 'hidden',
+    },
+    quickActionGradient: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.sm,
+      borderRadius: spacing.radiusButton,
+    },
+    quickActionGradientBlue: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.sm,
+      borderRadius: spacing.radiusButton,
+    },
+    quickActionText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    quickActionGap: {
+      width: spacing.sm,
     },
     metricsGrid: {
       marginBottom: spacing.xl,
     },
     recordsCard: {
-      marginBottom: spacing.lg,
+      marginBottom: spacing.xl,
+      padding: spacing.lg,
     },
     cardTitle: {
       ...createCardTitleStyle(colors),
+      fontSize: 14,
+      fontWeight: '800',
       marginBottom: spacing.lg,
     },
-    actionBtnLarge: {
-      width: '100%',
-      minHeight: spacing.xl + spacing.md,
-      marginBottom: spacing.md,
+    timelineWrapper: {
+      position: 'relative',
     },
-    actionBtnLast: {
-      width: '100%',
-      minHeight: spacing.xl + spacing.md,
-      marginBottom: 0,
-    },
-    recordBlock: {
-      marginBottom: spacing.md,
-      paddingBottom: spacing.md,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.borderSubtle,
-    },
-    recordBlockLast: {
-      marginBottom: 0,
-      paddingBottom: 0,
-      borderBottomWidth: 0,
-    },
-    recordHeaderRow: {
+    timelineItem: {
       flexDirection: 'row',
+      marginBottom: spacing.md,
+      position: 'relative',
+    },
+    timelineLine: {
+      position: 'absolute',
+      left: 16,
+      top: 32,
+      bottom: -18,
+      width: 1.5,
+      backgroundColor: colors.borderSubtle,
+    },
+    timelineBulletWrap: {
+      width: 32,
       alignItems: 'center',
-      marginBottom: spacing.sm,
     },
     recordIconWrap: {
       width: 32,
       height: 32,
-      borderRadius: spacing.radiusButton,
-      backgroundColor: `${colors.primary}14`,
+      borderRadius: 16,
+      backgroundColor: 'rgba(13, 148, 136, 0.08)',
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: spacing.sm,
+      borderWidth: 1,
+      borderColor: 'rgba(13, 148, 136, 0.15)',
     },
-    recordHeaderText: {
+    timelineContent: {
       flex: 1,
-      minWidth: 0,
+      marginLeft: spacing.sm,
+      justifyContent: 'center',
+    },
+    recordHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 3,
     },
     recordTime: {
-      fontSize: typography.caption.fontSize,
-      fontWeight: '600',
+      fontSize: 12,
+      fontWeight: '700',
       color: colors.primary,
-      marginBottom: 2,
     },
-    recordSource: {
-      ...typography.caption,
+    sourceTag: {
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(15, 23, 42, 0.05)',
+      paddingVertical: 1,
+      paddingHorizontal: 5,
+      borderRadius: 6,
+    },
+    sourceTagText: {
+      fontSize: 8,
+      fontWeight: '800',
       color: colors.textSecondary,
+      letterSpacing: 0.3,
     },
     recordDetail: {
-      fontSize: typography.body.fontSize,
-      fontWeight: typography.body.fontWeight,
-      color: colors.textPrimary,
-      lineHeight: typography.body.fontSize * 1.45,
-      paddingLeft: 32 + spacing.sm,
+      fontSize: 12,
+      fontWeight: '500',
+      color: colors.textSecondary,
+      lineHeight: 16,
+    },
+    emptyRecordsText: {
+      fontSize: 12,
+      fontWeight: '500',
+      color: colors.textSecondary,
+      textAlign: 'center',
+      paddingVertical: spacing.md,
+      fontStyle: 'italic',
     },
   });
 }

@@ -11,7 +11,7 @@ import { configureLayoutAnimation } from '../utils/layoutAnimation';
 import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '../constants/storage';
+import { STORAGE_KEYS, ROLES } from '../constants/storage';
 import {
   spacing,
   typography,
@@ -193,7 +193,13 @@ export default function LoginScreen({ navigation }) {
         </Card>
 
         <TextLink
-          onPress={() => navigation.navigate('Register')}
+          onPress={() => {
+            if (selectedRole === ROLES.PATIENT) {
+              navigation.navigate('PatientRegistration');
+            } else {
+              navigation.navigate('Register');
+            }
+          }}
           accent="Regístrate"
           accessibilityLabel="¿No tienes cuenta? Regístrate"
         >

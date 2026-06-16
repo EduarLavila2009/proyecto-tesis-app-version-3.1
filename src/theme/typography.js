@@ -19,27 +19,30 @@ const base = { fontFamily };
 export const typography = {
   h1: {
     ...base,
-    fontSize: 34,
-    fontWeight: '700',
-    lineHeight: 40,
+    fontSize: 28,
+    fontWeight: '800',
+    lineHeight: 34,
+    letterSpacing: -0.5,
   },
   h2: {
     ...base,
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: '600',
-    lineHeight: 32,
+    lineHeight: 24,
+    letterSpacing: -0.2,
   },
   title: {
     ...base,
     fontSize: 20,
-    fontWeight: '500',
-    lineHeight: 28,
+    fontWeight: '600',
+    lineHeight: 26,
+    letterSpacing: -0.3,
   },
   body: {
     ...base,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '400',
-    lineHeight: 24,
+    lineHeight: 22,
   },
   caption: {
     ...base,
@@ -47,37 +50,39 @@ export const typography = {
     fontWeight: '400',
     lineHeight: 16,
   },
-  /** Etiquetas de formulario */
+  /** Etiquetas de formulario y badges */
   label: {
     ...base,
     fontSize: 12,
     fontWeight: '600',
     lineHeight: 16,
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
-  /** Alias legacy (pantallas existentes) */
+  /** Métrica Gigante (Signos vitales destacados) */
   display: {
     ...base,
-    fontSize: 34,
-    fontWeight: '700',
-    lineHeight: 40,
+    fontSize: 38,
+    fontWeight: '800',
+    lineHeight: 44,
+    letterSpacing: -1,
   },
   titleSmall: {
     ...base,
-    fontSize: 20,
-    fontWeight: '500',
-    lineHeight: 28,
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 22,
   },
   subtitle: {
     ...base,
     fontSize: 18,
     fontWeight: '600',
     lineHeight: 24,
+    letterSpacing: -0.2,
   },
   bodyMedium: {
     ...base,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
-    lineHeight: 24,
+    lineHeight: 22,
   },
 };

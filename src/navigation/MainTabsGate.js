@@ -34,9 +34,14 @@ export default function MainTabsGate() {
     }
   }, []);
 
+  // Carga inicial al montar la compuerta de navegación
+  React.useEffect(() => {
+    resolveRole();
+  }, [resolveRole]);
+
   useFocusEffect(
     useCallback(() => {
-      setReady(false);
+      // Recarga el rol en segundo plano sin interrumpir la UI con un spinner
       resolveRole();
     }, [resolveRole])
   );

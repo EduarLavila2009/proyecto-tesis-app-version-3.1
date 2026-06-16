@@ -15,6 +15,7 @@ import { STORAGE_KEYS, ROLES } from '../constants/storage';
 import { PressableScale, ScreenContainer } from '../components';
 import { spacing, typography, tabListContent, useTheme } from '../theme';
 import { getDoctorPatientLinks } from '../services/connectionService';
+import * as storageService from '../services/storageService';
 
 /**
  * Lista de pacientes - Solo rol Médico
@@ -42,15 +43,7 @@ export default function PatientsListScreen({ navigation }) {
       }
       setCurrentUser(user);
 
-      const usersJson = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-      let users = [];
-      if (usersJson) {
-        try {
-          users = JSON.parse(usersJson);
-        } catch (_) {
-          users = [];
-        }
-      }
+      const users = await storageService.getUsers();
       const list = users.filter((u) => u.role === ROLES.PATIENT);
       setPatients(list);
 

@@ -5,8 +5,9 @@ import { spacing, typography, hitSlopComfortable, useTheme } from '../../../them
 import { usePressFeedback } from './usePressFeedback';
 
 /**
- * Botón secundario — fondo secondary, texto surface.
+ * Botón secundario — fondo secondary, texto surface, o borde primary si es outline.
  * @param {'filled'|'outline'|'ghost'} [appearance='filled']
+ * @param {string} [color] Color de acento personalizado para sincronizar borde, icono y texto.
  */
 export default function SecondaryButton({
   title,
@@ -19,22 +20,25 @@ export default function SecondaryButton({
   iconSize = 20,
   iconPosition = 'left',
   appearance = 'filled',
+  color,
 }) {
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const { scale, onPressIn, onPressOut } = usePressFeedback(disabled);
 
   const isFilled = appearance === 'filled';
   const isOutline = appearance === 'outline';
   const isGhost = appearance === 'ghost';
 
+  // Usar el color personalizado si se provee; si no, heredar del tema según la variante
+  const activeColor = color || (isFilled ? colors.secondary : colors.primary);
+
+  const styles = useMemo(() => createStyles(colors, activeColor), [colors, activeColor]);
+  const { scale, onPressIn, onPressOut } = usePressFeedback(disabled);
+
   const textColor = disabled
     ? colors.buttonDisabledText
     : isFilled
       ? colors.surface
-      : isGhost
-        ? colors.onCamera
-        : colors.primary;
+      : activeColor;
 
   return (
     <Animated.View style={[styles.outer, { transform: [{ scale }] }, style]}>
@@ -84,7 +88,7 @@ export default function SecondaryButton({
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, activeColor) {
   return StyleSheet.create({
     outer: {
       alignSelf: 'stretch',
@@ -99,12 +103,12 @@ function createStyles(colors) {
       borderRadius: spacing.radiusButton,
     },
     filled: {
-      backgroundColor: colors.secondary,
+      backgroundColor: activeColor,
     },
     outline: {
       backgroundColor: colors.surface,
       borderWidth: 1.5,
-      borderColor: colors.primary,
+      borderColor: activeColor,
     },
     ghost: {
       backgroundColor: 'transparent',

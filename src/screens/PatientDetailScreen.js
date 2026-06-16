@@ -8,8 +8,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/storage';
+import * as storageService from '../services/storageService';
 import {
   Card,
   PrimaryButton,
@@ -22,6 +24,9 @@ import {
   PatientIdentityHeader,
   SectionCard,
   SaveFeedbackBanner,
+  VitalsMiniGraph,
+  GlassmorphicCard,
+  PressableScale,
 } from '../components';
 import { useSaveFeedback } from '../hooks/useSaveFeedback';
 import { getNotesForPatient, addMedicalNote } from '../services/medicalNotesService';
@@ -34,6 +39,8 @@ import {
   createSectionHeadingStyle,
 } from '../theme';
 import { evaluateMonitoringAlert } from '../utils/vitalsMonitoring';
+import { evaluatePredictiveTriage } from '../utils/vitalsTrends';
+import { exportMedicalHistoryToPdf } from '../services/pdfReportService';
 import { alertLevelForMetric } from '../utils/vitalsMetricAlerts';
 import { getMedicalRecordsByUser } from '../services/medicalRecordsService';
 
@@ -44,6 +51,7 @@ import { getMedicalRecordsByUser } from '../services/medicalRecordsService';
 export default function PatientDetailScreen({ route }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { patientId } = route.params || {};
   const incomingVitals = route.params?.vitals;
@@ -73,6 +81,67 @@ export default function PatientDetailScreen({ route }) {
       : null
   );
 
+  const predictiveAlert = useMemo(() => {
+    return evaluatePredictiveTriage(medicalRecords);
+  }, [medicalRecords]);
+
+  const [graphMetric, setGraphMetric] = useState('hr'); // 'hr' | 'bp' | 'spo2' | 'temp'
+
+  const activeTrendData = useMemo(() => {
+    if (medicalRecords.length === 0) {
+      if (graphMetric === 'temp') return [vitals.temp];
+      if (graphMetric === 'bp') return [vitals.systolic];
+      if (graphMetric === 'spo2') return [vitals.spo2];
+      return [vitals.heartRate];
+    }
+    const list = [...medicalRecords].reverse();
+    if (graphMetric === 'temp') {
+      const vals = list.map((r) => r.temperature).filter((t) => typeof t === 'number' && t > 0);
+      return vals.length > 0 ? vals : [vitals.temp];
+    }
+    if (graphMetric === 'bp') {
+      const vals = list.map((r) => r.bloodPressure?.systolic || r.systolic).filter((b) => typeof b === 'number' && b > 0);
+      return vals.length > 0 ? vals : [vitals.systolic];
+    }
+    if (graphMetric === 'spo2') {
+      const vals = list.map((r) => r.oxygen).filter((o) => typeof o === 'number' && o > 0);
+      return vals.length > 0 ? vals : [vitals.spo2];
+    }
+    const vals = list.map((r) => r.heartRate).filter((hr) => typeof hr === 'number' && hr > 0);
+    return vals.length > 0 ? vals : [vitals.heartRate];
+  }, [medicalRecords, graphMetric, vitals]);
+
+  const activeGraphDetails = useMemo(() => {
+    switch (graphMetric) {
+      case 'temp':
+        return {
+          label: 'Evolución de Temperatura (°C)',
+          color: '#F97316',
+        };
+      case 'bp':
+        return {
+          label: 'Presión Arterial Sistólica (mmHg)',
+          color: '#22C55E',
+        };
+      case 'spo2':
+        return {
+          label: 'Oxígeno en Sangre (SpO₂ %)',
+          color: '#06B6D4',
+        };
+      default:
+        return {
+          label: 'Ritmo Cardíaco (bpm)',
+          color: colors.primary,
+        };
+    }
+  }, [graphMetric, colors]);
+
+  const handleExportPdf = useCallback(async () => {
+    if (!patient) return;
+    const historyData = patient.medicalHistory || {};
+    await exportMedicalHistoryToPdf(patient.name || 'Paciente', medicalRecords, historyData);
+  }, [patient, medicalRecords]);
+
   const loadClinicalNotes = useCallback(async (pid, did) => {
     if (!pid) return;
     const list = await getNotesForPatient(pid, did);
@@ -98,13 +167,7 @@ export default function PatientDetailScreen({ route }) {
         } catch (_) {}
       }
 
-      const usersJson = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-      let users = [];
-      if (usersJson) {
-        try {
-          users = JSON.parse(usersJson);
-        } catch (_) {}
-      }
+      const users = await storageService.getUsers();
       const found = users.find((u) => u.id === patientId);
       setPatient(found || null);
 
@@ -262,6 +325,79 @@ export default function PatientDetailScreen({ route }) {
         level={level}
       />
 
+      {/* Triage predictivo longitudinal (alerta preventiva) */}
+      {predictiveAlert && predictiveAlert.level !== 'stable' ? (
+        <Card style={[styles.trendAlertCard, { borderColor: predictiveAlert.level === 'critical' ? colors.danger : colors.warning, marginBottom: spacing.lg }]}>
+          <View style={styles.trendAlertHeader}>
+            <Ionicons 
+              name={predictiveAlert.level === 'critical' ? 'shield-outline' : 'warning-outline'} 
+              size={22} 
+              color={predictiveAlert.level === 'critical' ? colors.danger : colors.warning} 
+            />
+            <Text style={[styles.trendAlertTitle, { color: predictiveAlert.level === 'critical' ? colors.danger : colors.warning }]}>
+              {predictiveAlert.title}
+            </Text>
+          </View>
+          <Text style={styles.trendAlertText}>{predictiveAlert.message}</Text>
+        </Card>
+      ) : null}
+
+      {/* Gráfico y selector interactivo de tendencias */}
+      <Text style={styles.sectionHeading} allowFontScaling>
+        Gráfica de Tendencia Clínica
+      </Text>
+      <View style={styles.graphSelectorRow}>
+        {[
+          { id: 'hr', label: 'Ritmo C.' },
+          { id: 'bp', label: 'Presión S.' },
+          { id: 'spo2', label: 'Oxígeno' },
+          { id: 'temp', label: 'Temp.' },
+        ].map((opt) => (
+          <PressableScale
+            key={opt.id}
+            onPress={() => {
+              try {
+                const Haptics = require('expo-haptics');
+                if (Platform.OS !== 'web') {
+                  Haptics.selectionAsync();
+                }
+              } catch (_) {}
+              setGraphMetric(opt.id);
+            }}
+            style={[
+              styles.graphSelectorBtn,
+              graphMetric === opt.id && styles.graphSelectorBtnActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.graphSelectorText,
+                graphMetric === opt.id && styles.graphSelectorTextActive,
+              ]}
+              allowFontScaling
+            >
+              {opt.label}
+            </Text>
+          </PressableScale>
+        ))}
+      </View>
+
+      {medicalRecords.length > 0 ? (
+        <GlassmorphicCard style={{ marginBottom: spacing.lg }}>
+          <VitalsMiniGraph
+            data={activeTrendData}
+            label={activeGraphDetails.label}
+            colorAccent={activeGraphDetails.color}
+          />
+        </GlassmorphicCard>
+      ) : (
+        <Card style={{ padding: spacing.md, marginBottom: spacing.lg }}>
+          <Text style={{ fontSize: 12, color: colors.textSecondary, textAlign: 'center', fontStyle: 'italic' }}>
+            No hay suficientes mediciones para trazar la gráfica de tendencias del paciente.
+          </Text>
+        </Card>
+      )}
+
       {/* Métricas vitales — grid 2×2 responsive */}
       <Text style={styles.sectionHeading} allowFontScaling>
         Métricas vitales
@@ -338,34 +474,22 @@ export default function PatientDetailScreen({ route }) {
         </Text>
         <View style={styles.actionsRow}>
           <PrimaryButton
-            title="Ver historial"
+            title="Exportar PDF"
             icon="document-text-outline"
-            onPress={() => {
-              const summary = hasHistory
-                ? `Sangre: ${h.bloodType || '—'}\nAlergias: ${h.allergies || '—'}\nCrónicas: ${
-                    h.chronicDiseases || '—'
-                  }\nMedicamentos: ${h.medications || '—'}\nNotas: ${h.notes || '—'}`
-                : 'Sin datos médicos registrados.';
-              Alert.alert('Historial médico', summary, [{ text: 'Cerrar' }]);
-            }}
+            onPress={handleExportPdf}
             style={styles.actionBtn}
-            accessibilityLabel="Ver historial médico del paciente"
+            accessibilityLabel="Exportar Historial Médico del paciente a PDF"
           />
           <View style={styles.actionGap} />
           <SecondaryButton
-            title="Contactar"
-            icon="mail-outline"
+            title="Videollamada"
+            icon="videocam-outline"
             appearance="outline"
             onPress={() => {
-              const contact = `Correo: ${patient.email || '—'}\nTeléfono: ${patient.phone || '—'}`;
-              Alert.alert(
-                'Contacto (simulado)',
-                `${contact}\n\nEn producción aquí se abriría chat, llamada o teleconsulta.`,
-                [{ text: 'OK' }]
-              );
+              navigation.navigate('VideoCall', { contactName: patient.name || 'Paciente', role: 'patient' });
             }}
             style={styles.actionBtn}
-            accessibilityLabel="Contactar al paciente"
+            accessibilityLabel="Iniciar teleconsulta con el paciente"
           />
         </View>
       </Card>
@@ -631,6 +755,59 @@ function createStyles(colors) {
     },
     scrollFooter: {
       height: spacing.l,
+    },
+    trendAlertCard: {
+      padding: spacing.md,
+      borderWidth: 1.5,
+      borderRadius: spacing.radiusCard,
+      backgroundColor: 'rgba(239, 68, 68, 0.05)',
+    },
+    trendAlertHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.xs,
+    },
+    trendAlertTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      letterSpacing: 0.3,
+    },
+    trendAlertText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      lineHeight: 17,
+      paddingLeft: 22 + spacing.sm,
+    },
+    graphSelectorRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: spacing.xs,
+      marginBottom: spacing.md,
+      marginTop: spacing.xs,
+    },
+    graphSelectorBtn: {
+      flex: 1,
+      paddingVertical: spacing.xs,
+      backgroundColor: colors.surface,
+      borderColor: colors.borderSubtle,
+      borderWidth: 1,
+      borderRadius: spacing.radiusInput,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    graphSelectorBtnActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    graphSelectorText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textSecondary,
+    },
+    graphSelectorTextActive: {
+      color: '#FFFFFF',
     },
   });
 }

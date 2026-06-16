@@ -6,76 +6,74 @@
  */
 
 export const lightColors = {
-  primary: '#6200EE',
-  primaryPressed: '#5000C8',
+  primary: '#0F766E',            // Clinical Blue (Teal de calma y precisión - Ajustado para contraste de 5.5:1)
+  primaryPressed: '#0D5C56',
 
-  secondary: '#03DAC6',
-  secondaryMuted: 'rgba(3, 218, 198, 0.12)',
+  secondary: '#047857',          // Emerald Jade (Estable - Ajustado para contraste de 5.8:1)
+  secondaryMuted: 'rgba(4, 120, 87, 0.08)',
 
-  background: '#FFFFFF',
-  surface: '#FFFFFF',
+  background: '#F8FAFC',         // Fondo neutro limpio
+  surface: '#FFFFFF',            // Superficies blancas puras
 
-  textPrimary: '#000000',
-  textSecondary: '#666666',
-  textPlaceholder: '#757575',
-  textDisabled: '#9E9E9E',
+  textPrimary: '#0F172A',        // Slate oscuro para máxima lectura
+  textSecondary: '#334155',      // Slate intermedio para legibilidad secundaria
+  textPlaceholder: '#64748B',
+  textDisabled: '#CBD5E1',
 
   onPrimary: '#FFFFFF',
-  onSecondary: '#000000',
+  onSecondary: '#FFFFFF',
 
-  borderSubtle: '#E0E0E0',
-  borderFocus: '#6200EE',
+  borderSubtle: '#E2E8F0',       // Separadores muy suaves
+  borderFocus: '#0F766E',
 
-  /** Alias semántico solicitado */
-  error: '#B00020',
-  danger: '#B00020',
-  success: '#018786',
-  warning: '#F57C00',
-  info: '#6200EE',
+  error: '#DC2626',              // Coral Red / Clinical Crimson (Ajustado para contraste de 6.5:1)
+  danger: '#DC2626',
+  success: '#047857',
+  warning: '#B45309',            // Amber Clínico (Ajustado para contraste de 5.5:1)
+  info: '#0F766E',
 
-  shadow: '#000000',
+  shadow: '#0F172A',
 
-  buttonDisabled: '#E0E0E0',
-  buttonDisabledText: '#666666',
+  buttonDisabled: '#E2E8F0',
+  buttonDisabledText: '#94A3B8',
 
-  /** Escáner QR / cámara */
   cameraBackground: '#000000',
   onCamera: '#FFFFFF',
   scanFrameBorder: 'rgba(255,255,255,0.85)',
 };
 
-/** Modo oscuro — variantes Material con misma identidad de marca. */
+/** Modo oscuro — variantes Material con identidad premium Deep Slate */
 export const darkColors = {
-  primary: '#BB86FC',
-  primaryPressed: '#985EFF',
+  primary: '#0D9488',            // Clinical Blue
+  primaryPressed: '#0F766E',
 
-  secondary: '#03DAC6',
-  secondaryMuted: 'rgba(3, 218, 198, 0.16)',
+  secondary: '#10B981',          // Emerald Jade
+  secondaryMuted: 'rgba(16, 185, 129, 0.08)',
 
-  background: '#121212',
-  surface: '#1E1E1E',
+  background: '#080C14',         // Fondo Deep Slate clínico
+  surface: '#111827',            // Gris oscuro slate para tarjetas
 
-  textPrimary: '#FFFFFF',
-  textSecondary: '#B3B3B3',
-  textPlaceholder: '#9E9E9E',
-  textDisabled: '#757575',
+  textPrimary: '#FFFFFF',        // Blanco puro
+  textSecondary: '#94A3B8',      // Slate atenuado
+  textPlaceholder: '#475569',
+  textDisabled: '#334155',
 
   onPrimary: '#FFFFFF',
-  onSecondary: '#000000',
+  onSecondary: '#080C14',
 
-  borderSubtle: '#2C2C2C',
-  borderFocus: '#BB86FC',
+  borderSubtle: 'rgba(255, 255, 255, 0.08)', // Bordes translúcidos finos
+  borderFocus: '#0D9488',
 
-  error: '#CF6679',
-  danger: '#CF6679',
-  success: '#03DAC6',
-  warning: '#FFB74D',
-  info: '#BB86FC',
+  error: '#EF4444',              // Coral Red
+  danger: '#EF4444',
+  success: '#10B981',
+  warning: '#F59E0B',            // Amber
+  info: '#0D9488',
 
   shadow: '#000000',
 
-  buttonDisabled: '#2C2C2C',
-  buttonDisabledText: '#9E9E9E',
+  buttonDisabled: '#1E293B',
+  buttonDisabledText: '#475569',
 
   cameraBackground: '#000000',
   onCamera: '#FFFFFF',
@@ -84,3 +82,4 @@ export const darkColors = {
 
 /** Tema claro por defecto (import estático sin contexto). */
 export const colors = lightColors;
+

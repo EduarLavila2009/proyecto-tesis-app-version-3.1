@@ -47,7 +47,9 @@
           "icon": "./assets/icon.png",
           "color": "#6200EE"
         }
-      ]
+      ],
+      "expo-font",
+      "./plugins/withDisableForcedDarkMode"
     ]
   }
 }

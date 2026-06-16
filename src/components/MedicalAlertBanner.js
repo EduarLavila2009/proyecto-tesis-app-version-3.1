@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { Card, PressableScale } from './index';
+import Card from './ui/Card';
+import PressableScale from './PressableScale';
 import { spacing, typography, useTheme } from '../theme';
 
 export default function MedicalAlertBanner({ title, subtitle, onPress }) {

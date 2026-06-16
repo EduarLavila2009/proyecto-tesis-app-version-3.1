@@ -40,7 +40,19 @@ export function usePressFeedback(disabled = false) {
 
   const onPressIn = useCallback(() => {
 
-    if (!disabled) springTo(motion.scale.pressed);
+    if (!disabled) {
+
+      try {
+
+        const Haptics = require('expo-haptics');
+
+        Haptics.selectionAsync();
+
+      } catch (_) {}
+
+      springTo(motion.scale.pressed);
+
+    }
 
   }, [disabled, springTo]);
 

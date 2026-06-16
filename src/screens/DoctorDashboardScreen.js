@@ -11,6 +11,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { STORAGE_KEYS, ROLES } from '../constants/storage';
+import * as storageService from '../services/storageService';
 import {
   Card,
   PressableScale,
@@ -112,8 +113,7 @@ export default function DoctorDashboardScreen({ navigation }) {
         return;
       }
 
-      const usersJson = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-      const users = usersJson ? JSON.parse(usersJson) : [];
+      const users = await storageService.getUsers();
       const links = await getDoctorPatientLinks();
       const connectedIds = new Set(
         links.filter((l) => l.doctorId === user.id).map((l) => l.patientId)

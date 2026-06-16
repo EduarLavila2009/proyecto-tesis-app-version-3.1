@@ -23,6 +23,7 @@ export { useThemedStyles } from './useThemedStyles';
 export { ThemeProvider, useTheme } from './themeProvider';
 export { motion, runShake } from './motion';
 export { authFormCardStyle, authFormWrapStyle, createAuthFieldStyle } from './authLayout';
+export { scale, getResponsiveColumns } from './scaling';
 export { chatLayout, getChatBubbleMaxWidth } from './chatLayout';
 export {
   createSectionHeadingStyle,

@@ -1,8 +1,26 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useMemo, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import Card from './Card';
 import Icon from '../Icon';
+import ClinicalTooltip from './ClinicalTooltip';
 import { spacing, typography, useTheme } from '../../theme';
+
+function getClinicalExplanation(label = '') {
+  const norm = label.toLowerCase();
+  if (norm.includes('cardíac') || norm.includes('ritmo') || norm.includes('frecuencia')) {
+    return 'El ritmo cardíaco ideal en reposo oscila entre 60 y 90 bpm en adultos. Valores fuera de este rango pueden indicar fatiga, deshidratación, esfuerzo cardiovascular o arritmia periférica.';
+  }
+  if (norm.includes('temp') || norm.includes('calor')) {
+    return 'La temperatura corporal normal en reposo se sitúa de 36.1°C a 37.2°C. Permite identificar tempranamente infecciones, cuadros de febrícula o hipotermia sistémica.';
+  }
+  if (norm.includes('presi') || norm.includes('arterial') || norm.includes('pa')) {
+    return 'La presión arterial se compone de Sistólica (tensión máxima en contracción, ideal < 125 mmHg) y Diastólica (tensión en reposo, ideal < 85 mmHg). Su control regular protege los vasos cerebrales.';
+  }
+  if (norm.includes('oxíge') || norm.includes('spo') || norm.includes('saturaci')) {
+    return 'La saturación de oxígeno mide la cantidad de O₂ transportado en sangre. Rangos normales: 95% a 100%. Valores inferiores a 92% indican hipoxia celular leve y requieren atención.';
+  }
+  return 'Esta métrica refleja el estado fisiológico y cardiovascular actual del paciente recolectado de forma continua para el monitoreo clínico integral.';
+}
 
 /**
  * Tarjeta de métrica vital — icono primary, valor destacado, etiqueta + insight opcional.
@@ -28,15 +46,93 @@ export default function MetricTile({
     [colors, alertLevel, variant]
   );
 
+  const scale = useRef(new Animated.Value(1)).current;
+  const pulseScale = useRef(new Animated.Value(1)).current;
+  const pulseOpacity = useRef(new Animated.Value(1)).current;
+
+  // Animación infinita de pulso para estados críticos/warning
+  useEffect(() => {
+    if (alertLevel === 'critical' || alertLevel === 'warning') {
+      const pulseAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(pulseScale, {
+              toValue: 1.15,
+              duration: 850,
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulseOpacity, {
+              toValue: 0.6,
+              duration: 850,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(pulseScale, {
+              toValue: 1.0,
+              duration: 850,
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulseOpacity, {
+              toValue: 1.0,
+              duration: 850,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+      pulseAnimation.start();
+      return () => {
+        pulseAnimation.stop();
+        pulseScale.setValue(1);
+        pulseOpacity.setValue(1);
+      };
+    }
+  }, [alertLevel]);
+
   const iconColor = iconAccent === 'secondary' ? colors.secondary : colors.primary;
   const iconBg =
     iconAccent === 'secondary' ? `${colors.secondary}22` : `${colors.primary}14`;
 
+  const handlePressIn = () => {
+    try {
+      const Haptics = require('expo-haptics');
+      Haptics.selectionAsync();
+    } catch (_) {}
+    Animated.spring(scale, {
+      toValue: 0.95,
+      useNativeDriver: true,
+      tension: 350,
+      friction: 8,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 350,
+      friction: 8,
+    }).start();
+  };
+
+  const clinicalInfo = useMemo(() => getClinicalExplanation(label), [label]);
+
   const tile = (
     <Card style={[styles.card, width != null && { width }, style]}>
-      <View style={[styles.iconWrap, { backgroundColor: iconBg }]} pointerEvents="none">
+      <Animated.View
+        style={[
+          styles.iconWrap,
+          {
+            backgroundColor: iconBg,
+            transform: [{ scale: pulseScale }],
+            opacity: pulseOpacity,
+          },
+        ]}
+        pointerEvents="none"
+      >
         <Icon name={icon} size={variant === 'compact' ? 18 : 22} color={iconColor} />
-      </View>
+      </Animated.View>
       <Text style={styles.value} allowFontScaling numberOfLines={2}>
         {value}
       </Text>
@@ -51,20 +147,35 @@ export default function MetricTile({
     </Card>
   );
 
-  if (!onPress) return tile;
-
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        width != null && { width },
-        pressed && styles.pressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`${value}, ${label}`}
-    >
-      {tile}
-    </Pressable>
+    <ClinicalTooltip title={label} value={value} clinicalInfo={clinicalInfo}>
+      {onPress ? (
+        <Pressable
+          onPress={onPress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          style={({ pressed }) => [width != null && { width }]}
+          accessibilityRole="button"
+          accessibilityLabel={`${value}, ${label}. Mantén presionado para ver información clínica.`}
+        >
+          <Animated.View style={{ transform: [{ scale }] }}>
+            {tile}
+          </Animated.View>
+        </Pressable>
+      ) : (
+        <Pressable
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          style={({ pressed }) => [width != null && { width }]}
+          accessibilityRole="button"
+          accessibilityLabel={`${value}, ${label}. Mantén presionado para ver información clínica.`}
+        >
+          <Animated.View style={{ transform: [{ scale }] }}>
+            {tile}
+          </Animated.View>
+        </Pressable>
+      )}
+    </ClinicalTooltip>
   );
 }
 
@@ -72,9 +183,9 @@ function createStyles(colors, alertLevel, variant) {
   const isCompact = variant === 'compact';
   const borderColor =
     alertLevel === 'critical'
-      ? colors.danger
+      ? `${colors.danger}40`
       : alertLevel === 'warning'
-        ? colors.warning
+        ? `${colors.warning}40`
         : colors.borderSubtle;
 
   const valueColor =
@@ -88,11 +199,8 @@ function createStyles(colors, alertLevel, variant) {
     card: {
       padding: isCompact ? spacing.m : spacing.l,
       minHeight: isCompact ? spacing.minTouchTarget * 1.75 : spacing.minTouchTarget * 2 + spacing.l,
-      borderWidth: alertLevel ? 1.5 : StyleSheet.hairlineWidth,
+      borderWidth: alertLevel ? 1.5 : 1,
       borderColor,
-    },
-    pressed: {
-      opacity: 0.92,
     },
     iconWrap: {
       width: isCompact ? 34 : 40,

@@ -9,7 +9,7 @@ import spacing from '../constants/spacing';
 import { useTheme } from '../theme';
 import { fontSizes } from '../constants/typography';
 import { ICON_SIZES } from '../constants/icons';
-import { PressableScale, SecondaryButton } from '../components';
+import { PressableScale, SecondaryButton, GlassmorphicCard } from '../components';
 
 /**
  * Menú principal - Dashboard dinámico según rol
@@ -79,12 +79,12 @@ export default function MainMenuScreen({ navigation }) {
           <Text style={styles.welcome} allowFontScaling>
             Bienvenido
           </Text>
-          {user && (
+          {user ? (
             <Text style={styles.userName} allowFontScaling>
               {user.name}
             </Text>
-          )}
-          {roleKey && (
+          ) : null}
+          {!!roleKey ? (
             <View
               style={[
                 styles.roleBadge,
@@ -95,7 +95,7 @@ export default function MainMenuScreen({ navigation }) {
                 Modo {roleLabel}
               </Text>
             </View>
-          )}
+          ) : null}
         </View>
 
         <View style={styles.sectionDivider} />
@@ -104,7 +104,6 @@ export default function MainMenuScreen({ navigation }) {
           {menuItems.map((item) => (
             <PressableScale
               key={item.id}
-              style={styles.card}
               onPress={() => navigation.navigate(item.screen)}
               accessibilityRole="button"
               accessibilityLabel={
@@ -113,20 +112,22 @@ export default function MainMenuScreen({ navigation }) {
                   : `Abrir ${item.title}`
               }
             >
-              <View style={styles.cardIcon}>
-                <Ionicons name={item.icon} size={ICON_SIZES.menuCard} color={colors.primary} />
-              </View>
-              <View style={styles.cardContent}>
-                <Text style={styles.cardTitle} allowFontScaling>
-                  {item.title}
-                </Text>
-                {item.isPlaceholder && (
-                  <Text style={styles.cardBadge} allowFontScaling>
-                    Próximamente
+              <GlassmorphicCard style={styles.card}>
+                <View style={styles.cardIcon}>
+                  <Ionicons name={item.icon} size={ICON_SIZES.menuCard} color={colors.primary} />
+                </View>
+                <View style={styles.cardContent}>
+                  <Text style={styles.cardTitle} allowFontScaling>
+                    {item.title}
                   </Text>
-                )}
-              </View>
-              <Ionicons name="chevron-forward" size={ICON_SIZES.action} color={colors.textSecondary} />
+                  {item.isPlaceholder ? (
+                    <Text style={styles.cardBadge} allowFontScaling>
+                      Próximamente
+                    </Text>
+                  ) : null}
+                </View>
+                <Ionicons name="chevron-forward" size={ICON_SIZES.action} color={colors.textSecondary} />
+              </GlassmorphicCard>
             </PressableScale>
           ))}
         </View>
@@ -136,8 +137,8 @@ export default function MainMenuScreen({ navigation }) {
             title="Cerrar sesión"
             icon="log-out-outline"
             appearance="outline"
+            color={colors.danger}
             onPress={handleLogout}
-            textStyle={{ color: colors.danger }}
             accessibilityLabel="Cerrar sesión"
           />
         </View>
@@ -200,19 +201,10 @@ function createStyles(colors) {
     gap: spacing.md,
   },
   card: {
-    backgroundColor: colors.surface,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    borderRadius: spacing.radiusLg,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 2,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
   },
   cardIcon: {
     width: 44,

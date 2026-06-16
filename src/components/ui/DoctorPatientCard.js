@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import Card from './Card';
 import MetricTile from './MetricTile';
 import { PrimaryButton, SecondaryButton } from './buttons';
@@ -29,9 +30,9 @@ export default function DoctorPatientCard({
   style,
 }) {
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-
+  const navigation = useNavigation();
   const level = alert?.level || 'stable';
+  const styles = useMemo(() => createStyles(colors, level), [colors, level]);
   const statusColor =
     level === 'critical'
       ? colors.danger
@@ -92,11 +93,7 @@ export default function DoctorPatientCard({
   );
 
   const handleContact = () => {
-    Alert.alert(
-      'Contactar paciente',
-      `Canal simulado para ${name || 'paciente'}.\n${email ? `Correo: ${email}` : ''}\n\nEn producción: chat, llamada o videoconsulta.`,
-      [{ text: 'Entendido' }]
-    );
+    navigation.navigate('VideoCall', { contactName: name || 'Paciente', role: 'patient' });
   };
 
   return (
@@ -164,10 +161,22 @@ export default function DoctorPatientCard({
   );
 }
 
-function createStyles(colors) {
+function createStyles(colors, level) {
+  const isAlert = level === 'critical' || level === 'warning';
+  const borderColor =
+    level === 'critical'
+      ? colors.danger
+      : level === 'warning'
+        ? colors.warning
+        : colors.borderSubtle;
+
   return StyleSheet.create({
     card: {
       padding: spacing.l,
+      borderWidth: isAlert ? 1.5 : StyleSheet.hairlineWidth,
+      borderColor,
+      borderLeftWidth: 6,
+      borderLeftColor: borderColor,
     },
     identityRow: {
       flexDirection: 'row',

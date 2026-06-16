@@ -7,8 +7,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -21,6 +24,14 @@ import {
 } from '../components';
 import { spacing, typography, chatLayout, useTheme } from '../theme';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
+
+const QUICK_REPLIES = [
+  "Tengo dolor de cabeza",
+  "Tengo fiebre alta",
+  "Me duele el estómago",
+  "Siento ansiedad",
+  "¿Cuándo es una emergencia?"
+];
 
 /**
  * IA médica simulada — chat tipo mensajería.
@@ -154,7 +165,7 @@ export default function IAMedicaScreen() {
   }, [navigation]);
 
   const keyboardVerticalOffset =
-    Platform.OS === 'ios' ? headerHeight + insets.top : 0;
+    Platform.OS === 'ios' ? headerHeight : 0;
 
   const scrollToBottom = useCallback((animated = true) => {
     requestAnimationFrame(() => {
@@ -162,20 +173,13 @@ export default function IAMedicaScreen() {
     });
   }, []);
 
-  const { keyboardHeight } = useChatKeyboard(() => {
+  const { keyboardHeight, isKeyboardVisible } = useChatKeyboard(() => {
     scrollToBottom(true);
   });
 
   const listPaddingBottom = useMemo(() => {
-    const base =
-      inputBarHeight +
-      chatLayout.listPaddingBottom +
-      chatLayout.listExtraScrollPadding;
-    if (Platform.OS === 'android' && keyboardHeight > 0) {
-      return base + keyboardHeight * 0.15;
-    }
-    return base;
-  }, [inputBarHeight, keyboardHeight]);
+    return inputBarHeight + spacing.m + spacing.sm;
+  }, [inputBarHeight]);
 
   const listContentStyle = useMemo(
     () => [styles.listContent, { paddingBottom: listPaddingBottom }],
@@ -183,10 +187,9 @@ export default function IAMedicaScreen() {
   );
 
   /** En Android con `softwareKeyboardLayoutMode: resize` el sistema redimensiona la ventana. */
-  const inputBarBottomPad = useMemo(
-    () => Math.max(insets.bottom, spacing.sm),
-    [insets.bottom]
-  );
+  const inputBarBottomPad = useMemo(() => {
+    return isKeyboardVisible ? spacing.sm : Math.max(insets.bottom, spacing.sm);
+  }, [insets.bottom, isKeyboardVisible]);
 
   useEffect(() => {
     let cancelled = false;
@@ -348,7 +351,7 @@ export default function IAMedicaScreen() {
             showsVerticalScrollIndicator={false}
             onScrollBeginDrag={() => Keyboard.dismiss()}
             onContentSizeChange={() => scrollToBottom(false)}
-            automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+            automaticallyAdjustKeyboardInsets={true}
             maintainVisibleContentPosition={
               Platform.OS === 'ios'
                 ? { minIndexForVisible: 0, autoscrollToTopThreshold: 24 }
@@ -365,6 +368,27 @@ export default function IAMedicaScreen() {
               { paddingBottom: inputBarBottomPad },
             ]}
           >
+            {/* Chips de respuestas rápidas horizontal */}
+            {!isTyping && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.quickRepliesScroll}
+                contentContainerStyle={styles.quickRepliesContent}
+              >
+                {QUICK_REPLIES.map((q, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={styles.quickReplyChip}
+                    onPress={() => setInputText(q)}
+                  >
+                    <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
+                    <Text style={styles.quickReplyText}>{q}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
             <ChatComposer
               value={inputText}
               onChangeText={setInputText}
@@ -422,6 +446,29 @@ function createStyles(colors) {
       borderTopColor: colors.borderSubtle,
       paddingHorizontal: chatLayout.inputBarPaddingH,
       paddingTop: chatLayout.inputBarPaddingTop,
+    },
+    quickRepliesScroll: {
+      marginBottom: spacing.sm,
+    },
+    quickRepliesContent: {
+      gap: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    quickReplyChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: colors.borderSubtle,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm - 2,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    quickReplyText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textPrimary,
     },
   });
 }

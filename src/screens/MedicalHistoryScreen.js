@@ -10,19 +10,21 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import { STORAGE_KEYS, ROLES, DEFAULT_MEDICAL_HISTORY } from '../constants/storage';
+import * as storageService from '../services/storageService';
 import {
-  Card,
-  PrimaryButton,
-  SecondaryButton,
   TextInputField,
   DropdownSelect,
-  FormPanel,
   MetricTile,
   HistoryRecordCard,
+  VitalsMiniGraph,
+  GlassmorphicCard,
+  PressableScale,
 } from '../components';
 
 const BLOOD_TYPE_OPTIONS = [
@@ -35,17 +37,19 @@ const BLOOD_TYPE_OPTIONS = [
   { label: 'AB+', value: 'AB+' },
   { label: 'AB-', value: 'AB-' },
 ];
+
 import {
   spacing,
   typography,
   layout,
   useTheme,
   createSectionHeadingStyle,
-  createCardTitleStyle,
   createFieldGroupStyle,
 } from '../theme';
 import { useMetricsGridLayout } from '../hooks/useMetricsGridLayout';
 import { evaluateMonitoringAlert } from '../utils/vitalsMonitoring';
+import { evaluatePredictiveTriage } from '../utils/vitalsTrends';
+import { exportMedicalHistoryToPdf } from '../services/pdfReportService';
 import {
   addMedicalRecord,
   getMedicalRecordsByUser,
@@ -65,10 +69,22 @@ function alertLevelForMetric(reasons, prefix) {
   return undefined;
 }
 
-/**
- * Historial médico - Solo rol Paciente
- * Carga y edita el historial del usuario actual. Guarda en AsyncStorage.
- */
+function GlassFormPanel({ title, icon, children, colors, styles }) {
+  return (
+    <GlassmorphicCard style={styles.formPanelCard}>
+      <View style={styles.formPanelHeader}>
+        <View style={styles.formPanelIconWrap}>
+          <Ionicons name={icon} size={18} color={colors.primary} />
+        </View>
+        <Text style={styles.formPanelTitle}>{title}</Text>
+      </View>
+      <View style={styles.formPanelBody}>
+        {children}
+      </View>
+    </GlassmorphicCard>
+  );
+}
+
 export default function MedicalHistoryScreen() {
   const navigation = useNavigation();
   const { colors } = useTheme();
@@ -90,6 +106,9 @@ export default function MedicalHistoryScreen() {
   const [bpSystolicInput, setBpSystolicInput] = useState('');
   const [bpDiastolicInput, setBpDiastolicInput] = useState('');
   const [oxygenInput, setOxygenInput] = useState('');
+
+  // Estado del Filtro de chips superior deslizable
+  const [activeFilter, setActiveFilter] = useState('todo');
 
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
@@ -127,6 +146,80 @@ export default function MedicalHistoryScreen() {
     }
     return evaluateMonitoringAlert(heartRate, systolic, diastolic, oxygen);
   }, [latestVitals]);
+
+  const predictiveAlert = useMemo(() => {
+    return evaluatePredictiveTriage(medicalRecords);
+  }, [medicalRecords]);
+
+  const handleExportPdf = useCallback(async () => {
+    if (!user) return;
+    try {
+      const Haptics = require('expo-haptics');
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (_) {}
+
+    const historyData = {
+      bloodType,
+      allergies,
+      chronicDiseases,
+      medications,
+      notes,
+    };
+    await exportMedicalHistoryToPdf(user.name || 'Paciente', medicalRecords, historyData);
+  }, [user, medicalRecords, bloodType, allergies, chronicDiseases, medications, notes]);
+
+  const [graphMetric, setGraphMetric] = useState('hr'); // 'hr' | 'bp' | 'spo2' | 'temp'
+
+  const activeTrendData = useMemo(() => {
+    if (medicalRecords.length === 0) {
+      if (graphMetric === 'temp') return [36.5, 36.7, 36.8, 36.4, 36.6];
+      if (graphMetric === 'bp') return [120, 118, 122, 115, 121];
+      if (graphMetric === 'spo2') return [98, 97, 99, 96, 98];
+      return [72, 75, 82, 68, 88, 79, 74];
+    }
+    const list = [...medicalRecords].reverse();
+    if (graphMetric === 'temp') {
+      const vals = list.map((r) => r.temperature).filter((t) => typeof t === 'number' && t > 0);
+      return vals.length > 0 ? vals : [36.5, 36.7, 36.8, 36.4, 36.6];
+    }
+    if (graphMetric === 'bp') {
+      const vals = list.map((r) => r.bloodPressure?.systolic || r.systolic).filter((b) => typeof b === 'number' && b > 0);
+      return vals.length > 0 ? vals : [120, 118, 122, 115, 121];
+    }
+    if (graphMetric === 'spo2') {
+      const vals = list.map((r) => r.oxygen).filter((o) => typeof o === 'number' && o > 0);
+      return vals.length > 0 ? vals : [98, 97, 99, 96, 98];
+    }
+    const vals = list.map((r) => r.heartRate).filter((hr) => typeof hr === 'number' && hr > 0);
+    return vals.length > 0 ? vals : [72, 75, 82, 68, 88, 79, 74];
+  }, [medicalRecords, graphMetric]);
+
+  const activeGraphDetails = useMemo(() => {
+    switch (graphMetric) {
+      case 'temp':
+        return {
+          label: 'Evolución de Temperatura (°C)',
+          color: '#F97316',
+        };
+      case 'bp':
+        return {
+          label: 'Presión Arterial Sistólica (mmHg)',
+          color: '#22C55E',
+        };
+      case 'spo2':
+        return {
+          label: 'Oxígeno en Sangre (SpO₂ %)',
+          color: '#06B6D4',
+        };
+      default:
+        return {
+          label: 'Ritmo Cardíaco (bpm)',
+          color: colors.primary,
+        };
+    }
+  }, [graphMetric, colors]);
 
   const latestMetricTiles = useMemo(() => {
     if (!latestVitals) return [];
@@ -205,6 +298,13 @@ export default function MedicalHistoryScreen() {
   const handleSave = useCallback(async () => {
     if (!user) return;
 
+    try {
+      const Haptics = require('expo-haptics');
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (_) {}
+
     const medicalHistory = {
       bloodType: bloodType.trim(),
       allergies: allergies.trim(),
@@ -216,21 +316,10 @@ export default function MedicalHistoryScreen() {
     try {
       const updatedUser = { ...user, medicalHistory };
 
-      await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+      await storageService.saveUser(updatedUser);
 
       if (user.id) {
-        const usersJson = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-        let users = [];
-        if (usersJson) {
-          try {
-            users = JSON.parse(usersJson);
-          } catch (_) {}
-        }
-        const index = users.findIndex((u) => u.id === user.id);
-        if (index !== -1) {
-          users[index] = { ...users[index], medicalHistory };
-          await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-        }
+        await storageService.updateUserInList({ id: user.id, medicalHistory });
       }
 
       setUser(updatedUser);
@@ -265,6 +354,13 @@ export default function MedicalHistoryScreen() {
       return;
     }
 
+    try {
+      const Haptics = require('expo-haptics');
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (_) {}
+
     const res = await addMedicalRecord({
       userId: user.id,
       date: new Date(),
@@ -296,16 +392,22 @@ export default function MedicalHistoryScreen() {
     oxygenInput,
   ]);
 
-  const scrollToRecords = useCallback(() => {
-    if (medicalRecords.length === 0) {
-      Alert.alert(
-        'Sin registros',
-        'Aún no hay mediciones guardadas. Agrega una medición más abajo.'
-      );
-      return;
+  // Filtrado lógico de registros para el FlatList
+  const filteredRecords = useMemo(() => {
+    if (activeFilter === 'todo') return medicalRecords;
+    if (activeFilter === 'manual') return medicalRecords.filter(r => r.source !== 'auto' && r.source !== 'automatic');
+    if (activeFilter === 'auto') return medicalRecords.filter(r => r.source === 'auto' || r.source === 'automatic');
+    if (activeFilter === 'alertas') {
+      return medicalRecords.filter(r => {
+        const systolic = r?.bloodPressure?.systolic;
+        const diastolic = r?.bloodPressure?.diastolic;
+        if (typeof r.heartRate !== 'number' || typeof systolic !== 'number' || typeof diastolic !== 'number') return false;
+        const alertStatus = evaluateMonitoringAlert(r.heartRate, systolic, diastolic, r.oxygen);
+        return alertStatus && alertStatus.level !== 'stable';
+      });
     }
-    listRef.current?.scrollToIndex({ index: 0, animated: true, viewOffset: spacing.sm });
-  }, [medicalRecords.length]);
+    return medicalRecords;
+  }, [medicalRecords, activeFilter]);
 
   const renderRecord = useCallback(
     ({ item }) => {
@@ -338,234 +440,428 @@ export default function MedicalHistoryScreen() {
     []
   );
 
+  const FILTER_OPTIONS = [
+    { label: 'Todo', value: 'todo', icon: 'list' },
+    { label: 'Automático', value: 'auto', icon: 'pulse' },
+    { label: 'Manual', value: 'manual', icon: 'create' },
+    { label: 'Alertas', value: 'alertas', icon: 'warning' },
+  ];
+
   const listHeader = useCallback(
-    () => (
-      <View style={styles.listHeader}>
-        <Text style={styles.pageTitle} allowFontScaling accessibilityRole="header">
-          Historial y métricas
-        </Text>
-        <Text style={styles.sectionLabel} allowFontScaling>
-          Mediciones y ficha clínica en este dispositivo
-        </Text>
+    () => {
+      const predictiveGlow = predictiveAlert ? (predictiveAlert.level === 'stable' ? 'success' : predictiveAlert.level) : undefined;
+      
+      return (
+        <View style={styles.listHeader}>
+          {/* Cabecera Premium */}
+          <View style={styles.headerBlock}>
+            <View style={styles.headerTitleRow}>
+              <View style={styles.headerIconWrap}>
+                <Ionicons name="folder-open-outline" size={22} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={styles.pageTitle} allowFontScaling accessibilityRole="header">
+                  Historial Clínico
+                </Text>
+                <Text style={styles.sectionLabel} allowFontScaling>
+                  Mediciones y ficha clínica en este dispositivo
+                </Text>
+              </View>
+            </View>
+          </View>
 
-        <View style={styles.quickActionsRow}>
-          <PrimaryButton
-            title="Ver historial completo"
-            icon="list-outline"
-            onPress={scrollToRecords}
-            style={styles.quickActionBtn}
-            accessibilityLabel="Ver historial completo de mediciones"
-          />
-          <View style={styles.quickActionGap} />
-          <SecondaryButton
-            title="IA médica"
-            icon="sparkles-outline"
-            onPress={() => navigation.navigate('MedicalAI')}
-            style={styles.quickActionBtn}
-            accessibilityLabel="Abrir asistente de IA médica"
-          />
-        </View>
+          {/* Triage predictivo longitudinal (alerta preventiva) */}
+          {predictiveAlert && predictiveAlert.level !== 'stable' ? (
+            <GlassmorphicCard
+              style={styles.trendAlertCard}
+              alertType={predictiveGlow}
+            >
+              <View style={styles.trendAlertHeader}>
+                <Ionicons 
+                  name={predictiveAlert.level === 'critical' ? 'shield-outline' : 'warning-outline'} 
+                  size={20} 
+                  color={predictiveAlert.level === 'critical' ? colors.danger : colors.warning} 
+                />
+                <Text style={[styles.trendAlertTitle, { color: predictiveAlert.level === 'critical' ? colors.danger : colors.warning }]}>
+                  {predictiveAlert.title}
+                </Text>
+              </View>
+              <Text style={styles.trendAlertText}>{predictiveAlert.message}</Text>
+            </GlassmorphicCard>
+          ) : null}
 
-        <Text style={styles.sectionHeading} allowFontScaling>
-          Métricas vitales
-        </Text>
-        <Text style={styles.sectionHint} allowFontScaling>
-          {latestRecord
-            ? `Última medición · ${formatRecordDate(latestRecord.date)}`
-            : 'Sin mediciones — agrega la primera más abajo'}
-        </Text>
+          {/* Acciones Rápidas con Gradientes y Haptics */}
+          <View style={styles.quickActionsRow}>
+            <PressableScale
+              onPress={handleExportPdf}
+              style={styles.quickActionBtn}
+              accessibilityLabel="Exportar Historial Médico a PDF"
+            >
+              <LinearGradient
+                colors={['#0F766E', '#0D9488']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.quickActionGradient}
+              >
+                <Ionicons name="document-text-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.quickActionText}>Exportar PDF</Text>
+              </LinearGradient>
+            </PressableScale>
+            
+            <View style={styles.quickActionGap} />
+            
+            <PressableScale
+              onPress={() => navigation.navigate('MedicalAI')}
+              style={styles.quickActionBtn}
+              accessibilityLabel="Abrir asistente de IA médica"
+            >
+              <LinearGradient
+                colors={['#2563EB', '#1D4ED8']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.quickActionGradientBlue}
+              >
+                <Ionicons name="sparkles-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.quickActionText}>IA Médica</Text>
+              </LinearGradient>
+            </PressableScale>
+          </View>
 
-        {latestMetricTiles.length > 0 ? (
-          <View style={[styles.metricsGrid, gridStyle]}>
-            {latestMetricTiles.map((tile) => (
-              <MetricTile
-                key={tile.id}
-                icon={tile.icon}
-                value={tile.value}
-                label={tile.label}
-                width={tileWidth}
-                alertLevel={tile.alertLevel}
-              />
+          {/* Filtro Rápido Dinámico Deslizable */}
+          <Text style={styles.sectionHeading} allowFontScaling>
+            Filtrar Registros
+          </Text>
+          <View style={styles.chipBarWrapper}>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={FILTER_OPTIONS}
+              keyExtractor={(item) => item.value}
+              contentContainerStyle={styles.chipBarContent}
+              renderItem={({ item }) => {
+                const isActive = activeFilter === item.value;
+                const bgCol = isActive ? colors.primary : 'rgba(17, 24, 39, 0.4)';
+                const borderCol = isActive ? colors.primary : 'rgba(255, 255, 255, 0.05)';
+                const textCol = isActive ? '#FFFFFF' : colors.textSecondary;
+                const iconCol = isActive ? '#FFFFFF' : colors.primary;
+
+                const handleChipPress = () => {
+                  try {
+                    const Haptics = require('expo-haptics');
+                    if (Platform.OS !== 'web') {
+                      Haptics.selectionAsync();
+                    }
+                  } catch (_) {}
+                  setActiveFilter(item.value);
+                };
+
+                return (
+                  <PressableScale
+                    onPress={handleChipPress}
+                    style={[styles.chip, { backgroundColor: bgCol, borderColor: borderCol }]}
+                  >
+                    <Ionicons name={item.icon + '-outline'} size={13} color={iconCol} style={styles.chipIcon} />
+                    <Text style={[styles.chipText, { color: textCol }]}>{item.label}</Text>
+                  </PressableScale>
+                );
+              }}
+            />
+          </View>
+
+          {/* Gráfico y Métricas */}
+          <Text style={styles.sectionHeading} allowFontScaling>
+            Gráfica de Tendencia Clínica
+          </Text>
+          <View style={styles.graphSelectorRow}>
+            {[
+              { id: 'hr', label: 'Ritmo C.' },
+              { id: 'bp', label: 'Presión S.' },
+              { id: 'spo2', label: 'Oxígeno' },
+              { id: 'temp', label: 'Temp.' },
+            ].map((opt) => (
+              <PressableScale
+                key={opt.id}
+                onPress={() => {
+                  try {
+                    const Haptics = require('expo-haptics');
+                    if (Platform.OS !== 'web') {
+                      Haptics.selectionAsync();
+                    }
+                  } catch (_) {}
+                  setGraphMetric(opt.id);
+                }}
+                style={[
+                  styles.graphSelectorBtn,
+                  graphMetric === opt.id && styles.graphSelectorBtnActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.graphSelectorText,
+                    graphMetric === opt.id && styles.graphSelectorTextActive,
+                  ]}
+                  allowFontScaling
+                >
+                  {opt.label}
+                </Text>
+              </PressableScale>
             ))}
           </View>
-        ) : (
-          <Card style={styles.emptyVitalsCard}>
-            <Text style={styles.emptyVitalsText} allowFontScaling>
-              Registra una medición para ver FC, temperatura, presión y oxígeno aquí.
-            </Text>
-          </Card>
-        )}
 
-        <Text style={[styles.sectionHeading, styles.recordsHeading]} allowFontScaling>
-          Últimos registros
-        </Text>
-        {medicalRecords.length === 0 ? (
-          <Text style={styles.emptyRecordsHint} allowFontScaling>
-            No hay registros todavía.
+          {medicalRecords.length > 0 ? (
+            <GlassmorphicCard style={styles.graphContainerCard}>
+              <VitalsMiniGraph
+                data={activeTrendData}
+                label={activeGraphDetails.label}
+                colorAccent={activeGraphDetails.color}
+              />
+            </GlassmorphicCard>
+          ) : null}
+
+          <Text style={styles.sectionHeading} allowFontScaling>
+            Métricas vitales
           </Text>
-        ) : null}
-      </View>
-    ),
+          <Text style={styles.sectionHint} allowFontScaling>
+            {latestRecord
+              ? `Última medición · ${formatRecordDate(latestRecord.date)}`
+              : 'Sin mediciones — agrega la primera más abajo'}
+          </Text>
+
+          {latestMetricTiles.length > 0 ? (
+            <View style={[styles.metricsGrid, gridStyle]}>
+              {latestMetricTiles.map((tile) => (
+                <MetricTile
+                  key={tile.id}
+                  icon={tile.icon}
+                  value={tile.value}
+                  label={tile.label}
+                  width={tileWidth}
+                  alertLevel={tile.alertLevel}
+                />
+              ))}
+            </View>
+          ) : (
+            <GlassmorphicCard style={styles.emptyVitalsCard}>
+              <Text style={styles.emptyVitalsText} allowFontScaling>
+                Registra una medición para ver FC, temperatura, presión y oxígeno aquí.
+              </Text>
+            </GlassmorphicCard>
+          )}
+
+          <Text style={[styles.sectionHeading, styles.recordsHeading]} allowFontScaling>
+            Últimos registros
+          </Text>
+          {filteredRecords.length === 0 ? (
+            <Text style={styles.emptyRecordsHint} allowFontScaling>
+              No hay registros que coincidan con el filtro seleccionado.
+            </Text>
+          ) : null}
+        </View>
+      );
+    },
     [
       styles,
-      scrollToRecords,
       navigation,
       latestRecord,
       latestMetricTiles,
       gridStyle,
       tileWidth,
       medicalRecords.length,
+      filteredRecords.length,
+      activeFilter,
+      colors,
+      predictiveAlert,
+      activeTrendData,
+      activeGraphDetails,
+      graphMetric,
     ]
   );
 
   const listFooter = useCallback(
-    () => (
-      <View style={styles.footer}>
-        <FormPanel title="Agregar nueva medición">
-          <TextInputField
-            label="Ritmo cardíaco (bpm)"
-            containerStyle={styles.fieldGroup}
-            placeholder="Ej. 82"
-            value={heartRateInput}
-            onChangeText={setHeartRateInput}
-            validationType="number"
-            accessibilityLabel="Campo ritmo cardíaco"
-          />
+    () => {
+      const triageLevel = latestAlertStatus?.level || 'stable';
+      const triageGlow = triageLevel === 'stable' ? 'success' : triageLevel;
 
-          <TextInputField
-            label="Temperatura (°C)"
-            containerStyle={styles.fieldGroup}
-            placeholder="Ej. 36.6"
-            value={temperatureInput}
-            onChangeText={setTemperatureInput}
-            validationType="number"
-            accessibilityLabel="Campo temperatura"
-          />
+      return (
+        <View style={styles.footer}>
+          {/* Nueva Medición Form Panel */}
+          <GlassFormPanel title="Agregar nueva medición" icon="add-circle-outline" colors={colors} styles={styles}>
+            <TextInputField
+              label="Ritmo cardíaco (bpm)"
+              containerStyle={styles.fieldGroup}
+              placeholder="Ej. 82"
+              value={heartRateInput}
+              onChangeText={setHeartRateInput}
+              validationType="number"
+              accessibilityLabel="Campo ritmo cardíaco"
+            />
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.sectionFieldLabel} allowFontScaling>
-              Presión arterial (PA)
-            </Text>
-            <View style={styles.bpRow}>
-              <TextInputField
-                containerStyle={styles.bpField}
-                placeholder="Sistólica"
-                value={bpSystolicInput}
-                onChangeText={setBpSystolicInput}
-                validationType="number"
-                accessibilityLabel="Campo sistólica"
-              />
-              <Text style={styles.bpSlash} allowFontScaling>
-                /
+            <TextInputField
+              label="Temperatura (°C)"
+              containerStyle={styles.fieldGroup}
+              placeholder="Ej. 36.6"
+              value={temperatureInput}
+              onChangeText={setTemperatureInput}
+              validationType="number"
+              accessibilityLabel="Campo temperatura"
+            />
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.sectionFieldLabel} allowFontScaling>
+                Presión arterial (PA)
               </Text>
-              <TextInputField
-                containerStyle={styles.bpField}
-                placeholder="Diastólica"
-                value={bpDiastolicInput}
-                onChangeText={setBpDiastolicInput}
-                validationType="number"
-                accessibilityLabel="Campo diastólica"
-              />
+              <View style={styles.bpRow}>
+                <TextInputField
+                  containerStyle={styles.bpField}
+                  placeholder="Sistólica"
+                  value={bpSystolicInput}
+                  onChangeText={setBpSystolicInput}
+                  validationType="number"
+                  accessibilityLabel="Campo sistólica"
+                />
+                <Text style={styles.bpSlash} allowFontScaling>
+                  /
+                </Text>
+                <TextInputField
+                  containerStyle={styles.bpField}
+                  placeholder="Diastólica"
+                  value={bpDiastolicInput}
+                  onChangeText={setBpDiastolicInput}
+                  validationType="number"
+                  accessibilityLabel="Campo diastólica"
+                />
+              </View>
             </View>
-          </View>
 
-          <TextInputField
-            label="Oxígeno (SpO₂ %)"
-            containerStyle={styles.fieldGroup}
-            placeholder="Ej. 98"
-            value={oxygenInput}
-            onChangeText={setOxygenInput}
-            validationType="number"
-            accessibilityLabel="Campo oxígeno"
-          />
+            <TextInputField
+              label="Oxígeno (SpO₂ %)"
+              containerStyle={styles.fieldGroup}
+              placeholder="Ej. 98"
+              value={oxygenInput}
+              onChangeText={setOxygenInput}
+              validationType="number"
+              accessibilityLabel="Campo oxígeno"
+            />
 
-          <PrimaryButton
-            title="Guardar medición"
-            onPress={handleAddMeasurement}
-            style={styles.saveButton}
-            accessibilityLabel="Guardar nueva medición"
-          />
-        </FormPanel>
+            <PressableScale
+              onPress={handleAddMeasurement}
+              style={styles.saveBtnPressable}
+            >
+              <LinearGradient
+                colors={['#0F766E', '#0D9488']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.saveBtnGradient}
+              >
+                <Text style={styles.saveBtnText}>Guardar medición</Text>
+              </LinearGradient>
+            </PressableScale>
+          </GlassFormPanel>
 
-        <Text style={styles.sectionHeading} allowFontScaling>
-          Ficha clínica
-        </Text>
-
-        <Card style={styles.idCard}>
-          <Text style={styles.cardBlockTitle} allowFontScaling>
-            Identificación
+          {/* Pasaporte Clínico de Identificación Digital */}
+          <Text style={styles.sectionHeading} allowFontScaling>
+            Pasaporte Clínico
           </Text>
-          <Text style={styles.idLabel} allowFontScaling>
-            ID del paciente
-          </Text>
-          <Text style={styles.idValue} allowFontScaling>
-            {user?.id || '—'}
-          </Text>
-        </Card>
 
-        <FormPanel title="Datos clínicos">
-          <DropdownSelect
-            label="Tipo de sangre"
-            containerStyle={styles.fieldGroup}
-            placeholder="Selecciona tipo de sangre"
-            options={BLOOD_TYPE_OPTIONS}
-            value={bloodType}
-            onValueChange={setBloodType}
-            accessibilityLabel="Tipo de sangre"
-          />
-          <TextInputField
-            label="Alergias"
-            containerStyle={styles.fieldGroup}
-            placeholder="Alergias conocidas"
-            value={allergies}
-            onChangeText={setAllergies}
-            multiline
-            numberOfLines={3}
-            accessibilityLabel="Campo de alergias"
-          />
-          <TextInputField
-            label="Enfermedades crónicas"
-            containerStyle={styles.fieldGroup}
-            placeholder="Enfermedades crónicas"
-            value={chronicDiseases}
-            onChangeText={setChronicDiseases}
-            multiline
-            numberOfLines={3}
-            accessibilityLabel="Campo de enfermedades crónicas"
-          />
-        </FormPanel>
+          <GlassmorphicCard style={styles.idCard} alertType={triageGlow}>
+            <View style={styles.passportHeader}>
+              <View style={styles.passportBadgeIconWrap}>
+                <Ionicons name="card" size={16} color={colors.primary} />
+              </View>
+              <Text style={styles.passportTitle}>PASAPORTE CLÍNICO DIGITAL</Text>
+              <View style={[
+                styles.passportStatusDot, 
+                { backgroundColor: triageLevel === 'critical' ? colors.danger : triageLevel === 'warning' ? colors.warning : colors.success }
+              ]} />
+            </View>
+            <View style={styles.passportBody}>
+              <View style={styles.passportCol}>
+                <Text style={styles.passportName}>{user?.name || 'Paciente'}</Text>
+                <Text style={styles.idLabel}>ID ÚNICO PACIENTE</Text>
+                <Text style={styles.idValue}>{user?.id || '—'}</Text>
+                <Text style={styles.passportRole}>ROL: PACIENTE CO-MONITOREADO</Text>
+              </View>
+              <View style={styles.passportColRight}>
+                <View style={styles.qrBackground}>
+                  <Ionicons name="qr-code-outline" size={48} color={colors.textPrimary} />
+                </View>
+              </View>
+            </View>
+          </GlassmorphicCard>
 
-        <FormPanel title="Tratamiento y notas">
-          <TextInputField
-            label="Medicamentos actuales"
-            containerStyle={styles.fieldGroup}
-            placeholder="Medicamentos que toma actualmente"
-            value={medications}
-            onChangeText={setMedications}
-            multiline
-            numberOfLines={3}
-            accessibilityLabel="Campo de medicamentos actuales"
-          />
-          <TextInputField
-            label="Notas adicionales"
-            containerStyle={styles.fieldGroup}
-            placeholder="Otras observaciones"
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            numberOfLines={3}
-            accessibilityLabel="Campo de notas adicionales"
-          />
+          {/* Datos Clínicos Form Panel */}
+          <GlassFormPanel title="Datos clínicos" icon="medical-outline" colors={colors} styles={styles}>
+            <DropdownSelect
+              label="Tipo de sangre"
+              containerStyle={styles.fieldGroup}
+              placeholder="Selecciona tipo de sangre"
+              options={BLOOD_TYPE_OPTIONS}
+              value={bloodType}
+              onValueChange={setBloodType}
+              accessibilityLabel="Tipo de sangre"
+            />
+            <TextInputField
+              label="Alergias"
+              containerStyle={styles.fieldGroup}
+              placeholder="Alergias conocidas"
+              value={allergies}
+              onChangeText={setAllergies}
+              multiline
+              numberOfLines={3}
+              accessibilityLabel="Campo de alergias"
+            />
+            <TextInputField
+              label="Enfermedades crónicas"
+              containerStyle={styles.fieldGroup}
+              placeholder="Enfermedades crónicas"
+              value={chronicDiseases}
+              onChangeText={setChronicDiseases}
+              multiline
+              numberOfLines={3}
+              accessibilityLabel="Campo de enfermedades crónicas"
+            />
+          </GlassFormPanel>
 
-          <PrimaryButton
-            title="Guardar cambios"
-            onPress={handleSave}
-            style={styles.saveButton}
-            accessibilityLabel="Guardar cambios del historial médico"
-          />
-        </FormPanel>
-      </View>
-    ),
+          {/* Tratamiento y Notas Form Panel */}
+          <GlassFormPanel title="Tratamiento y notas" icon="document-text-outline" colors={colors} styles={styles}>
+            <TextInputField
+              label="Medicamentos actuales"
+              containerStyle={styles.fieldGroup}
+              placeholder="Medicamentos que toma actualmente"
+              value={medications}
+              onChangeText={setMedications}
+              multiline
+              numberOfLines={3}
+              accessibilityLabel="Campo de medicamentos actuales"
+            />
+            <TextInputField
+              label="Notas adicionales"
+              containerStyle={styles.fieldGroup}
+              placeholder="Otras observaciones"
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              numberOfLines={3}
+              accessibilityLabel="Campo de notas adicionales"
+            />
+
+            <PressableScale
+              onPress={handleSave}
+              style={styles.saveBtnPressable}
+            >
+              <LinearGradient
+                colors={['#0F766E', '#0D9488']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.saveBtnGradient}
+              >
+                <Text style={styles.saveBtnText}>Guardar cambios</Text>
+              </LinearGradient>
+            </PressableScale>
+          </GlassFormPanel>
+        </View>
+      );
+    },
     [
       user,
       bloodType,
@@ -581,6 +877,8 @@ export default function MedicalHistoryScreen() {
       oxygenInput,
       handleAddMeasurement,
       styles,
+      colors,
+      latestAlertStatus,
     ]
   );
 
@@ -618,7 +916,7 @@ export default function MedicalHistoryScreen() {
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <FlatList
           ref={listRef}
-          data={medicalRecords}
+          data={filteredRecords}
           keyExtractor={(item) => item.id}
           renderItem={renderRecord}
           ListHeaderComponent={listHeader}
@@ -636,7 +934,9 @@ export default function MedicalHistoryScreen() {
             bpDiastolicInput,
             oxygenInput,
             medicalRecords,
+            filteredRecords,
             latestMetricTiles,
+            activeFilter,
           }}
           contentContainerStyle={[
             styles.listContent,
@@ -677,16 +977,37 @@ function createStyles(colors) {
     listHeader: {
       marginBottom: spacing.sm,
     },
+    headerBlock: {
+      marginBottom: spacing.m,
+    },
+    headerTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    headerIconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: spacing.radiusButton,
+      backgroundColor: 'rgba(13, 148, 136, 0.08)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     pageTitle: {
       ...typography.h2,
       color: colors.textPrimary,
-      marginBottom: spacing.s,
+      marginBottom: 2,
     },
-    sectionHeading: createSectionHeadingStyle(colors),
+    sectionHeading: {
+      ...typography.title,
+      color: colors.textPrimary,
+      fontWeight: '800',
+      marginTop: spacing.lg,
+      marginBottom: spacing.sm,
+    },
     sectionLabel: {
       ...typography.caption,
       color: colors.textSecondary,
-      marginBottom: spacing.m,
     },
     sectionHint: {
       ...typography.caption,
@@ -696,22 +1017,72 @@ function createStyles(colors) {
     quickActionsRow: {
       flexDirection: 'row',
       alignItems: 'stretch',
-      marginBottom: spacing.xl,
+      marginTop: spacing.sm,
+      marginBottom: spacing.m,
     },
     quickActionBtn: {
       flex: 1,
       minWidth: 0,
-      minHeight: spacing.xl + spacing.md,
+      borderRadius: spacing.radiusButton,
+      overflow: 'hidden',
+    },
+    quickActionGradient: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.sm,
+      borderRadius: spacing.radiusButton,
+    },
+    quickActionGradientBlue: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.sm,
+      borderRadius: spacing.radiusButton,
+    },
+    quickActionText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '700',
     },
     quickActionGap: {
-      width: spacing.md,
+      width: spacing.sm,
+    },
+    chipBarWrapper: {
+      marginHorizontal: -layout.screenPaddingH,
+      paddingHorizontal: layout.screenPaddingH,
+    },
+    chipBarContent: {
+      gap: spacing.sm,
+      paddingRight: spacing.lg,
+    },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: spacing.xs + 2,
+      paddingHorizontal: spacing.sm + 2,
+      borderRadius: spacing.radiusButton * 1.5,
+      borderWidth: 1,
+    },
+    chipIcon: {
+      marginRight: spacing.xs,
+    },
+    chipText: {
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    graphContainerCard: {
+      padding: spacing.md,
+      marginBottom: spacing.md,
     },
     metricsGrid: {
-      marginBottom: spacing.xl,
+      marginBottom: spacing.m,
     },
     emptyVitalsCard: {
-      marginBottom: spacing.xl,
-      backgroundColor: colors.secondaryMuted,
+      padding: spacing.lg,
+      marginBottom: spacing.m,
     },
     emptyVitalsText: {
       ...typography.body,
@@ -720,18 +1091,47 @@ function createStyles(colors) {
       lineHeight: typography.body.fontSize * 1.45,
     },
     recordsHeading: {
-      marginTop: spacing.xs,
+      marginTop: spacing.md,
+      marginBottom: spacing.m,
     },
     emptyRecordsHint: {
       ...typography.caption,
       color: colors.textSecondary,
       marginBottom: spacing.m,
+      textAlign: 'center',
+      paddingVertical: spacing.md,
     },
     footer: {
       marginTop: spacing.lg,
       paddingTop: spacing.lg,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.borderSubtle,
+    },
+    formPanelCard: {
+      padding: spacing.lg,
+      marginBottom: spacing.lg,
+    },
+    formPanelHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    formPanelIconWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: 'rgba(13, 148, 136, 0.08)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    formPanelTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: colors.textPrimary,
+    },
+    formPanelBody: {
+      width: '100%',
     },
     centered: {
       flex: 1,
@@ -751,20 +1151,74 @@ function createStyles(colors) {
       textAlign: 'center',
     },
     idCard: {
+      padding: spacing.lg,
       marginBottom: spacing.lg,
     },
-    cardBlockTitle: {
-      ...createCardTitleStyle(colors),
+    passportHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
       marginBottom: spacing.md,
     },
-    idLabel: {
-      fontSize: typography.caption.fontSize,
-      fontWeight: '600',
+    passportBadgeIconWrap: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: 'rgba(13, 148, 136, 0.1)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: spacing.sm,
+    },
+    passportTitle: {
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 0.8,
       color: colors.textSecondary,
-      marginBottom: spacing.xs,
+      flex: 1,
+    },
+    passportStatusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    passportBody: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    passportCol: {
+      flex: 1,
+    },
+    passportName: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      marginBottom: spacing.sm,
+    },
+    passportRole: {
+      fontSize: 8,
+      fontWeight: '800',
+      color: colors.primary,
+      letterSpacing: 0.4,
+      marginTop: spacing.xs,
+    },
+    passportColRight: {
+      marginLeft: spacing.md,
+    },
+    qrBackground: {
+      padding: spacing.sm,
+      backgroundColor: colors.surface,
+      borderRadius: spacing.radiusButton,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    idLabel: {
+      fontSize: 9,
+      fontWeight: '700',
+      color: colors.textPlaceholder,
+      letterSpacing: 0.5,
     },
     idValue: {
-      fontSize: typography.subtitle.fontSize,
+      fontSize: 13,
       fontWeight: '700',
       color: colors.textPrimary,
     },
@@ -790,10 +1244,75 @@ function createStyles(colors) {
       fontWeight: typography.body.fontWeight,
       color: colors.textSecondary,
       marginHorizontal: -spacing.sm / 2,
+      alignSelf: 'center',
     },
-    saveButton: {
+    saveBtnPressable: {
       width: '100%',
-      marginTop: spacing.lg,
+      borderRadius: spacing.radiusButton,
+      overflow: 'hidden',
+      marginTop: spacing.md,
+    },
+    saveBtnGradient: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: spacing.sm,
+      borderRadius: spacing.radiusButton,
+    },
+    saveBtnText: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    trendAlertCard: {
+      marginBottom: spacing.md,
+      padding: spacing.md,
+    },
+    trendAlertHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.xs,
+    },
+    trendAlertTitle: {
+      fontSize: 13,
+      fontWeight: '800',
+      letterSpacing: 0.3,
+    },
+    trendAlertText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      lineHeight: 16,
+      paddingLeft: 20 + spacing.sm,
+    },
+    graphSelectorRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: spacing.xs,
+      marginBottom: spacing.md,
+      marginTop: spacing.xs,
+    },
+    graphSelectorBtn: {
+      flex: 1,
+      paddingVertical: spacing.xs,
+      backgroundColor: colors.surface,
+      borderColor: colors.borderSubtle,
+      borderWidth: 1,
+      borderRadius: spacing.radiusInput,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    graphSelectorBtnActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    graphSelectorText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textSecondary,
+    },
+    graphSelectorTextActive: {
+      color: '#FFFFFF',
     },
   });
 }
